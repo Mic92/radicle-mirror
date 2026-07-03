@@ -63,9 +63,9 @@ pkgs.testers.runNixOSTest {
         enable = true;
         package = self.packages.${pkgs.system}.default;
         ghAppId = appId;
-        ghAppKeyPath = ghAppKey;
-        webhookSecretPath = webhookSecretFile;
-        radicleKeyPath = radicleKey;
+        ghAppKeyPath = "${ghAppKey}";
+        webhookSecretPath = "${webhookSecretFile}";
+        radicleKeyPath = "${radicleKey}";
         ghEndpoint = "http://127.0.0.1:3000/";
         inherit cloneHost;
       };

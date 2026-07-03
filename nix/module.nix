@@ -29,19 +29,24 @@ in
       description = "GitHub App ID.";
     };
 
+    # secrets use str, not path, so a runtime path is not copied into the
+    # world-readable Nix store
     ghAppKeyPath = lib.mkOption {
-      type = lib.types.path;
-      description = "Path to the GitHub App RSA private key file (PKCS#8).";
+      type = lib.types.str;
+      example = "/run/secrets/gh-app-key.pem";
+      description = "Runtime path to the GitHub App RSA private key file (PKCS#1 or PKCS#8, PEM or DER).";
     };
 
     webhookSecretPath = lib.mkOption {
-      type = lib.types.path;
-      description = "Path to the GitHub webhook secret file.";
+      type = lib.types.str;
+      example = "/run/secrets/webhook-secret";
+      description = "Runtime path to the GitHub webhook secret file.";
     };
 
     radicleKeyPath = lib.mkOption {
-      type = lib.types.path;
-      description = "Path to the Radicle (OpenSSH ed25519) private key file.";
+      type = lib.types.str;
+      example = "/run/secrets/radicle-key";
+      description = "Runtime path to the Radicle (OpenSSH ed25519) private key file.";
     };
 
     ghEndpoint = lib.mkOption {
