@@ -1,0 +1,116 @@
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
+let
+  cfg = config.services.radicle-mirror;
+in
+{
+  options.services.radicle-mirror = {
+    enable = lib.mkEnableOption "the GitHub to Radicle mirror service";
+
+    package = lib.mkOption {
+      type = lib.types.package;
+      default = pkgs.callPackage ./package.nix { };
+      defaultText = lib.literalExpression "pkgs.radicle-mirror";
+      description = "The radicle-mirror package to use.";
+    };
+
+    addr = lib.mkOption {
+      type = lib.types.str;
+      default = ":4128";
+      description = "Address the HTTP server listens on.";
+    };
+
+    ghAppId = lib.mkOption {
+      type = lib.types.int;
+      description = "GitHub App ID.";
+    };
+
+    ghAppKeyPath = lib.mkOption {
+      type = lib.types.path;
+      description = "Path to the GitHub App RSA private key file (PKCS#8).";
+    };
+
+    webhookSecretPath = lib.mkOption {
+      type = lib.types.path;
+      description = "Path to the GitHub webhook secret file.";
+    };
+
+    radicleKeyPath = lib.mkOption {
+      type = lib.types.path;
+      description = "Path to the Radicle (OpenSSH ed25519) private key file.";
+    };
+
+    ghEndpoint = lib.mkOption {
+      type = lib.types.str;
+      default = "https://api.github.com/";
+      description = "GitHub API endpoint to contact.";
+    };
+
+    ridVarName = lib.mkOption {
+      type = lib.types.str;
+      default = "RADICLE_RID";
+      description = "Repository variable used to store the Radicle repository ID.";
+    };
+  };
+
+  config = lib.mkIf cfg.enable {
+    systemd.services.radicle-mirror = {
+      description = "GitHub to Radicle mirror";
+      wantedBy = [ "multi-user.target" ];
+      after = [ "network.target" ];
+
+      serviceConfig = {
+        ExecStart = lib.escapeShellArgs [
+          (lib.getExe cfg.package)
+          "--addr"
+          cfg.addr
+          "--gh-app-id"
+          (toString cfg.ghAppId)
+          "--gh-app-key-path"
+          cfg.ghAppKeyPath
+          "--gh-webhook-secret-path"
+          cfg.webhookSecretPath
+          "--gh-endpoint"
+          cfg.ghEndpoint
+          "--gh-rid-var-name"
+          cfg.ridVarName
+          "--radicle-key-path"
+          cfg.radicleKeyPath
+          "--repos-path"
+          "%S/radicle-mirror/repos"
+          "--rad-home"
+          "%S/radicle-mirror/rad"
+        ];
+        Restart = "on-failure";
+        RestartSec = 5;
+
+        DynamicUser = true;
+        StateDirectory = "radicle-mirror";
+        WorkingDirectory = "%S/radicle-mirror";
+
+        # hardening
+        NoNewPrivileges = true;
+        ProtectSystem = "strict";
+        ProtectHome = true;
+        PrivateTmp = true;
+        PrivateDevices = true;
+        ProtectKernelTunables = true;
+        ProtectKernelModules = true;
+        ProtectControlGroups = true;
+        RestrictAddressFamilies = [
+          "AF_INET"
+          "AF_INET6"
+          "AF_UNIX"
+        ];
+        RestrictNamespaces = true;
+        LockPersonality = true;
+        MemoryDenyWriteExecute = true;
+        SystemCallArchitectures = "native";
+      };
+    };
+  };
+}

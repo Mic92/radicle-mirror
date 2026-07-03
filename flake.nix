@@ -24,6 +24,8 @@
       treefmtEval = forAllSystems (pkgs: treefmt-nix.lib.evalModule pkgs ./nix/treefmt.nix);
     in
     {
+      nixosModules.default = ./nix/module.nix;
+
       packages = forAllSystems (pkgs: rec {
         default = pkgs.callPackage ./nix/package.nix { };
         radicle-mirror = default;
