@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -119,12 +120,14 @@ func (s *Server) syncRepo(ctx context.Context, repo *github.Repository) error {
 	if err := s.validateCloneURL(repo.CloneUrl); err != nil {
 		return err
 	}
-	radId, err := s.githubClient.GetRepoVar(repo.Owner.Login, repo.Name, s.repoVarName, "")
-	if err != nil {
-		return fmt.Errorf("cannot get repo var: %w", err)
-	}
 	// run git to fetch the latest changes and update the radicle repo to s.reposPath
 	repoPath := filepath.Join(s.reposPath, strconv.Itoa(repo.Owner.Id), strconv.Itoa(repo.Id))
+	// local .rid file is authoritative; GitHub variable is only a recovery fallback
+	ridPath := repoPath + ".rid"
+	radId := readRid(ridPath)
+	if radId == "" {
+		radId, _ = s.githubClient.GetRepoVar(repo.Owner.Login, repo.Name, s.repoVarName, "")
+	}
 	exists, err := pathExists(repoPath)
 	if err != nil {
 		return fmt.Errorf("cannot check if repo path exists: %w", err)
@@ -163,9 +166,12 @@ func (s *Server) syncRepo(ctx context.Context, repo *github.Repository) error {
 		return fmt.Errorf("cannot initialize rad remote: %w", err)
 	}
 	if newRadId != radId {
-		err = s.githubClient.SetRepoVar(repo.Owner.Login, repo.Name, s.repoVarName, newRadId)
-		if err != nil {
-			return fmt.Errorf("cannot set repo var: %w", err)
+		if err := os.WriteFile(ridPath, []byte(newRadId+"\n"), 0o644); err != nil {
+			return fmt.Errorf("cannot persist rad id: %w", err)
+		}
+		// best-effort publish for visibility; not required for mirroring
+		if err := s.githubClient.SetRepoVar(repo.Owner.Login, repo.Name, s.repoVarName, newRadId); err != nil {
+			slog.Warn("cannot publish rad id to github", "repo", repo.FullName, "error", err)
 		}
 	}
 	// push the changes to radicle
@@ -174,6 +180,14 @@ func (s *Server) syncRepo(ctx context.Context, repo *github.Repository) error {
 	}
 	s.syncState.markSynced(repo.Id, repo.PushedAt.Time)
 	return nil
+}
+
+func readRid(path string) string {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(b))
 }
 
 func (s *Server) reportCheckRun(repo *github.Repository, headSha string, syncErr error) error {

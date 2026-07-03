@@ -76,7 +76,10 @@ in
     ridVarName = lib.mkOption {
       type = lib.types.str;
       default = "RADICLE_RID";
-      description = "Repository variable used to store the Radicle repository ID.";
+      description = ''
+        Repository variable the Radicle repository ID is published to. The
+        mapping is stored locally, so the actions:write permission is optional.
+      '';
     };
   };
 
