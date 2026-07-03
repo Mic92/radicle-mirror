@@ -99,7 +99,9 @@ func (s *Server) syncRepo(repo *github.Repository, syncState SyncState) error {
 		if err != nil {
 			return fmt.Errorf("cannot set git origin: %w", err)
 		}
-		err = s.runGitCommand("-C", repoPath, "remote", "update", "--prune")
+		// fetch only origin: "remote update" would also fetch the rad remote,
+		// invoking git-remote-rad without RAD_HOME set on this command
+		err = s.runGitCommand("-C", repoPath, "fetch", "--prune", "origin")
 		if err != nil {
 			return fmt.Errorf("cannot pull repository %s: %w", repo.CloneUrl, err)
 		}
