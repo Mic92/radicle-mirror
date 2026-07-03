@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"log/slog"
@@ -44,6 +45,9 @@ func runServer(args *Args) error {
 	webhookSecret, err := os.ReadFile(args.webhookSecretPath)
 	if err != nil {
 		return fmt.Errorf("cannot read webhook secret: %v", err)
+	}
+	if len(bytes.TrimSpace(webhookSecret)) == 0 {
+		return fmt.Errorf("webhook secret is empty")
 	}
 
 	s := Server{
