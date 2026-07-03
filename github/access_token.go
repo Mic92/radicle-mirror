@@ -66,8 +66,7 @@ func (c *Client) requestAccessToken() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("cannot generate JWT: %v", err)
 	}
-	c._token = generatedJwt
-	resp, err := c.appInstallations()
+	resp, err := c.appInstallations(generatedJwt)
 	if err != nil {
 		return "", fmt.Errorf("cannot get app installations: %v", err)
 	}
@@ -76,7 +75,7 @@ func (c *Client) requestAccessToken() (string, error) {
 			continue
 		}
 		installationId := item.Id
-		response, err := c.createInstallationAccessToken(installationId)
+		response, err := c.createInstallationAccessToken(installationId, generatedJwt)
 		if err != nil {
 			return "", fmt.Errorf("cannot create installation access token: %v", err)
 		}

@@ -4,6 +4,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"io"
 	"net/http"
@@ -29,17 +30,14 @@ func NewClient(baseUrl string, appId int, keyPath string) (*Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("cannot load private key: %v", err)
 	}
-	key, err := x509.ParsePKCS8PrivateKey(keyContent)
+	rsaKey, err := parseRSAKey(keyContent)
 	if err != nil {
-		return nil, fmt.Errorf("cannot parse private key: %v", err)
-	}
-	rsaKey, ok := key.(*rsa.PrivateKey)
-	if !ok {
-		return nil, fmt.Errorf("private key is not an RSA key")
+		return nil, err
 	}
 
 	return &Client{
 		baseURL:    baseUrl,
+		appId:      appId,
 		client:     *http.DefaultClient,
 		tokenAge:   time.Unix(0, 0),
 		_token:     "",
@@ -54,7 +52,30 @@ func joinURL(base string, p string) string {
 	return strings.TrimRight(base, "/") + "/" + strings.TrimLeft(p, "/")
 }
 
-func (c *Client) request(method string, p string, body io.Reader) (*http.Response, error) {
+// parseRSAKey accepts a PEM-encoded (PKCS#1 or PKCS#8) or raw DER RSA private
+// key. GitHub App keys are distributed as PKCS#1 PEM.
+func parseRSAKey(content []byte) (*rsa.PrivateKey, error) {
+	der := content
+	if block, _ := pem.Decode(content); block != nil {
+		der = block.Bytes
+	}
+	if key, err := x509.ParsePKCS1PrivateKey(der); err == nil {
+		return key, nil
+	}
+	key, err := x509.ParsePKCS8PrivateKey(der)
+	if err != nil {
+		return nil, fmt.Errorf("cannot parse private key: %w", err)
+	}
+	rsaKey, ok := key.(*rsa.PrivateKey)
+	if !ok {
+		return nil, fmt.Errorf("private key is not an RSA key")
+	}
+	return rsaKey, nil
+}
+
+// doRequest issues a request authenticated with the given bearer token. Token
+// acquisition passes a JWT here directly to avoid recursing through Token().
+func (c *Client) doRequest(method string, p string, body io.Reader, token string) (*http.Response, error) {
 	u := joinURL(c.baseURL, p)
 	req, err := http.NewRequest(method, u, body)
 	if err != nil {
@@ -62,10 +83,6 @@ func (c *Client) request(method string, p string, body io.Reader) (*http.Respons
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("Content-Type", "application/json")
-	token, err := c.Token()
-	if err != nil {
-		return nil, fmt.Errorf("cannot get token: %v", err)
-	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 	req.Header.Set("User-Agent", "Radicle Mirror")
@@ -84,6 +101,14 @@ func (c *Client) request(method string, p string, body io.Reader) (*http.Respons
 		}
 		return resp, nil
 	}
+}
+
+func (c *Client) request(method string, p string, body io.Reader) (*http.Response, error) {
+	token, err := c.Token()
+	if err != nil {
+		return nil, fmt.Errorf("cannot get token: %v", err)
+	}
+	return c.doRequest(method, p, body, token)
 }
 
 func (c *Client) get(path string) (*http.Response, error) {
@@ -137,8 +162,8 @@ func (c *Client) CreateCommitStatus(status CommitStatus, owner string, repo stri
 	return nil
 }
 
-func (c *Client) appInstallations() ([]appInstallations, error) {
-	resp, err := c.get("/app/installations")
+func (c *Client) appInstallations(jwt string) ([]appInstallations, error) {
+	resp, err := c.doRequest("GET", "/app/installations", nil, jwt)
 	if err != nil {
 		return nil, fmt.Errorf("cannot get app installations: %v", err)
 	}
@@ -157,8 +182,8 @@ func (c *Client) appInstallations() ([]appInstallations, error) {
 	return installations, nil
 }
 
-func (c *Client) createInstallationAccessToken(installationId int) (string, error) {
-	resp, err := c.post(fmt.Sprintf("/app/installations/%d/access_tokens", installationId), nil)
+func (c *Client) createInstallationAccessToken(installationId int, jwt string) (string, error) {
+	resp, err := c.doRequest("POST", fmt.Sprintf("/app/installations/%d/access_tokens", installationId), nil, jwt)
 	if err != nil {
 		return "", fmt.Errorf("cannot create installation access token: %v", err)
 	}
