@@ -48,6 +48,9 @@
         // {
           formatting = treefmtEval.${pkgs.system}.config.build.check self;
         }
+        // nixpkgs.lib.optionalAttrs (pkgs.stdenv.hostPlatform.isLinux) {
+          integration = import ./nix/test.nix { inherit pkgs self; };
+        }
       );
     };
 }
