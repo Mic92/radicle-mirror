@@ -78,7 +78,14 @@ func runServer(args *Args) error {
 	mux.HandleFunc("/github", s.githubHandler)
 	mux.HandleFunc("/health", s.healthHandler)
 
-	srv := &http.Server{Addr: args.addr, Handler: mux}
+	srv := &http.Server{
+		Addr:              args.addr,
+		Handler:           mux,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
 
 	go func() {
 		<-ctx.Done()

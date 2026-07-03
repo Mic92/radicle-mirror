@@ -29,8 +29,11 @@ func verifySignature(payloadBody []byte, signature string, secretToken string) b
 	return res != 0
 }
 
+// maxWebhookBody caps the request body to bound memory use per delivery.
+const maxWebhookBody = 25 << 20
+
 func (s Server) githubHandler(w http.ResponseWriter, r *http.Request) {
-	body, err := io.ReadAll(r.Body)
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxWebhookBody))
 	if err != nil {
 		slog.Warn("cannot read http body", "error", err)
 		w.WriteHeader(http.StatusBadRequest)
