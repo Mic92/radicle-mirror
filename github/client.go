@@ -1,0 +1,296 @@
+package github
+
+import (
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+)
+
+type Client struct {
+	baseURL    string
+	appId      int
+	privateKey *rsa.PrivateKey
+	client     http.Client
+	tokenAge   time.Time
+	mu         sync.Mutex
+	_token     string
+}
+
+func NewClient(baseUrl string, appId int, keyPath string) (*Client, error) {
+	keyContent, err := os.ReadFile(keyPath)
+	if err != nil {
+		return nil, fmt.Errorf("cannot load private key: %v", err)
+	}
+	key, err := x509.ParsePKCS8PrivateKey(keyContent)
+	if err != nil {
+		return nil, fmt.Errorf("cannot parse private key: %v", err)
+	}
+	rsaKey, ok := key.(*rsa.PrivateKey)
+	if !ok {
+		return nil, fmt.Errorf("private key is not an RSA key")
+	}
+
+	return &Client{
+		baseURL:    baseUrl,
+		client:     *http.DefaultClient,
+		tokenAge:   time.Unix(0, 0),
+		_token:     "",
+		privateKey: rsaKey,
+	}, nil
+}
+
+// joinURL joins a base URL and path without collapsing the "//" in the scheme
+// (which path.Join would do) and without escaping query strings (which
+// url.JoinPath would do).
+func joinURL(base string, p string) string {
+	return strings.TrimRight(base, "/") + "/" + strings.TrimLeft(p, "/")
+}
+
+func (c *Client) request(method string, p string, body io.Reader) (*http.Response, error) {
+	u := joinURL(c.baseURL, p)
+	req, err := http.NewRequest(method, u, body)
+	if err != nil {
+		return nil, fmt.Errorf("cannot create request: %v", err)
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("Content-Type", "application/json")
+	token, err := c.Token()
+	if err != nil {
+		return nil, fmt.Errorf("cannot get token: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	req.Header.Set("User-Agent", "Radicle Mirror")
+	for {
+		resp, err := c.client.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("cannot send request: %v", err)
+		}
+		if (resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusTooManyRequests) && resp.Header.Get("Retry-After") != "" {
+			retryAfter, err := time.ParseDuration(resp.Header.Get("Retry-After") + "s")
+			if err != nil {
+				return nil, fmt.Errorf("cannot parse Retry-After header: %v", err)
+			}
+			time.Sleep(retryAfter)
+			continue
+		}
+		return resp, nil
+	}
+}
+
+func (c *Client) get(path string) (*http.Response, error) {
+	return c.request("GET", path, nil)
+}
+
+func (c *Client) post(path string, body io.Reader) (*http.Response, error) {
+	return c.request("POST", path, body)
+}
+
+func (c *Client) patch(path string, body io.Reader) (*http.Response, error) {
+	return c.request("PATCH", path, body)
+}
+
+type appInstallations struct {
+	Id      int `json:"id"`
+	AppId   int `json:"app_id"`
+	Account struct {
+		Login string `json:"login"`
+	} `json:"account"`
+}
+
+type CommitStatus struct {
+	State       string `json:"state"`
+	TargetUrl   string `json:"target_url"`
+	Description string `json:"description"`
+	Context     string `json:"context"`
+}
+
+func toJsonReader(v any) (io.Reader, error) {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return nil, fmt.Errorf("cannot marshal to json: %v", err)
+	}
+	return io.NopCloser(strings.NewReader(string(b))), nil
+}
+
+func (c *Client) CreateCommitStatus(status CommitStatus, owner string, repo string, sha string) error {
+	url := fmt.Sprintf("/repos/%s/%s/statuses/%s", owner, repo, sha)
+	reader, err := toJsonReader(status)
+	if err != nil {
+		return fmt.Errorf("cannot create json reader: %v", err)
+	}
+	resp, err := c.post(url, reader)
+	if err != nil {
+		return fmt.Errorf("cannot create commit status: %v", err)
+	}
+	if resp.StatusCode != http.StatusCreated {
+		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+	return nil
+}
+
+func (c *Client) appInstallations() ([]appInstallations, error) {
+	resp, err := c.get("/app/installations")
+	if err != nil {
+		return nil, fmt.Errorf("cannot get app installations: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+	reqBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("cannot read app installations response body: %v", err)
+	}
+	var installations []appInstallations
+	err = json.Unmarshal(reqBody, &installations)
+	if err != nil {
+		return nil, fmt.Errorf("cannot decode app installations response body: %v", err)
+	}
+	return installations, nil
+}
+
+func (c *Client) createInstallationAccessToken(installationId int) (string, error) {
+	resp, err := c.post(fmt.Sprintf("/app/installations/%d/access_tokens", installationId), nil)
+	if err != nil {
+		return "", fmt.Errorf("cannot create installation access token: %v", err)
+	}
+	if resp.StatusCode != http.StatusCreated {
+		return "", fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("cannot read installation access token response body: %v", err)
+	}
+	var respJson struct {
+		Token string `json:"token"`
+	}
+	err = json.Unmarshal(respBody, &respJson)
+	if err != nil {
+		return "", fmt.Errorf("cannot decode installation access token response body: %v", err)
+	}
+	return respJson.Token, nil
+}
+
+type Owner struct {
+	Login string `json:"login"`
+	Id    int    `json:"id"`
+}
+
+// Timestamp handles GitHub's two timestamp encodings: the REST API returns
+// RFC3339 strings while webhook payloads use Unix epoch integers.
+type Timestamp struct {
+	time.Time
+}
+
+func (t *Timestamp) UnmarshalJSON(data []byte) error {
+	if len(data) > 0 && data[0] == '"' {
+		return t.Time.UnmarshalJSON(data)
+	}
+	if string(data) == "null" {
+		return nil
+	}
+	secs, err := strconv.ParseInt(string(data), 10, 64)
+	if err != nil {
+		return fmt.Errorf("cannot parse timestamp %q: %w", string(data), err)
+	}
+	t.Time = time.Unix(secs, 0).UTC()
+	return nil
+}
+
+type Repository struct {
+	Id          int       `json:"id"`
+	Name        string    `json:"name"`
+	FullName    string    `json:"full_name"`
+	PushedAt    Timestamp `json:"pushed_at"`
+	Description string    `json:"description"`
+	Private     bool      `json:"private"`
+	Owner       Owner     `json:"owner"`
+	CloneUrl    string    `json:"clone_url"`
+}
+
+type InstallationRepositories struct {
+	Repositories []Repository `json:"repositories"`
+	TotalCount   int          `json:"total_count"`
+}
+
+func (c *Client) InstallationRepositories() ([]Repository, error) {
+	repos := make([]Repository, 0)
+	var installationRepos InstallationRepositories
+	page := 1
+	for {
+		resp, err := c.get(fmt.Sprintf("/installation/repositories/?per_page=100&page=%d", page))
+		if err != nil {
+			return nil, fmt.Errorf("cannot get installation repositories: %v", err)
+		}
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		}
+		repoBody, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("cannot read installation repositories response body: %v", err)
+		}
+		err = json.Unmarshal([]byte(repoBody), &installationRepos)
+		if err != nil {
+			return nil, fmt.Errorf("cannot decode installation repositories response body: %v", err)
+		}
+		repos = append(repos, installationRepos.Repositories...)
+		if len(repos) >= installationRepos.TotalCount || len(installationRepos.Repositories) < 100 {
+			break
+		}
+		page += 1
+	}
+	return repos, nil
+}
+
+func (c *Client) GetRepoVar(owner string, repo string, name string, defaultVal string) (string, error) {
+	resp, err := c.get(fmt.Sprintf("/repos/%s/%s/actions/variables/%s", owner, repo, name))
+	if err != nil {
+		return "", fmt.Errorf("cannot get repo var: %s", err)
+	}
+
+	var repoVar struct {
+		Name      string `json:"name"`
+		Value     string `json:"value"`
+		CreatedAt string `json:"created_at"`
+		UpdatedAt string `json:"updated_at"`
+	}
+	if resp.StatusCode == http.StatusNotFound {
+		return defaultVal, nil
+	}
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+	repoBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("cannot read repo var: %s", err)
+	}
+	err = json.Unmarshal([]byte(repoBody), &repoVar)
+	if err != nil {
+		return "", fmt.Errorf("cannot parse repo var: %s", err)
+	}
+	return repoVar.Value, nil
+}
+
+func (c *Client) SetRepoVar(owner string, repo string, name string, value string) error {
+	var reqBody struct {
+		Value string `json:"value"`
+	}
+	reqBody.Value = value
+	reader, err := toJsonReader(reqBody)
+	if err != nil {
+		return fmt.Errorf("cannot encode json: %s", err)
+	}
+	_, err = c.patch(fmt.Sprintf("/repos/%s/%s/actions/variables/%s", owner, repo, name), reader)
+	if err != nil {
+		return fmt.Errorf("cannot update variable '%s': %s", name, value)
+	}
+	return nil
+}
