@@ -98,7 +98,12 @@ func (n *RadNode) Stop() error {
 	if err := n.Command.Process.Signal(syscall.SIGTERM); err != nil {
 		return fmt.Errorf("cannot signal rad node: %w", err)
 	}
-	return n.Command.Wait()
+	// a clean shutdown via SIGTERM surfaces as a signal exit error
+	var exitErr *exec.ExitError
+	if err := n.Command.Wait(); err != nil && !errors.As(err, &exitErr) {
+		return err
+	}
+	return nil
 }
 
 func radEnv(home string) []string {
@@ -116,7 +121,11 @@ func getRadId(home string, repoPath string) (string, error) {
 	if err := cmd2.Run(); err != nil {
 		return "", fmt.Errorf("rad inspect command failed: %w, output: %s", err, stderr.String())
 	}
-	return strings.TrimSpace(stdout.String()), nil
+	rid := strings.TrimSpace(stdout.String())
+	if rid == "" {
+		return "", fmt.Errorf("rad inspect returned empty rid, stderr: %s", stderr.String())
+	}
+	return rid, nil
 }
 
 type RadMetadata struct {
@@ -148,10 +157,11 @@ func ensureRad(metadata RadMetadata) (string, error) {
 	cmd := exec.Command("rad", args...)
 	cmd.Dir = metadata.RepoPath
 	cmd.Env = radEnv(metadata.Home)
-	buf := bytes.Buffer{}
-	cmd.Stderr = &buf
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("rad init command failed: %w, output: %s", err, buf.String())
+		return "", fmt.Errorf("rad init command failed: %w, stdout: %s, stderr: %s", err, stdout.String(), stderr.String())
 	}
 	return getRadId(metadata.Home, metadata.RepoPath)
 }
