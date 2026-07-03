@@ -139,6 +139,7 @@ pkgs.testers.runNixOSTest {
     machine.succeed(
         "curl -fsS -X POST http://127.0.0.1:4128/github "
         + f"-H 'X-Hub-Signature-256: {sig}' "
+        + "-H 'X-GitHub-Event: push' "
         + "--data-binary @/tmp/payload"
     )
 

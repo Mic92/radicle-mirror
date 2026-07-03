@@ -44,6 +44,7 @@ func TestGithubHandler(t *testing.T) {
 
 	req := httptest.NewRequest("POST", "/github", strings.NewReader(string(body)))
 	req.Header.Set("X-Hub-Signature-256", sign(body, secret))
+	req.Header.Set("X-GitHub-Event", "push")
 	rec := httptest.NewRecorder()
 	s.githubHandler(rec, req)
 

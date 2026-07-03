@@ -42,9 +42,15 @@ func (s Server) githubHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !verifySignature(body, r.Header.Get("X-Hub-Signature-256"), s.webhookSecret) {
-		slog.Warn("invalid signature", "error", body)
+		slog.Warn("invalid signature", "remote", r.RemoteAddr)
 		w.WriteHeader(http.StatusUnauthorized)
 		_, _ = w.Write([]byte("invalid signature"))
+		return
+	}
+
+	if event := r.Header.Get("X-GitHub-Event"); event != "push" {
+		slog.Debug("ignoring non-push event", "event", event)
+		w.WriteHeader(http.StatusOK)
 		return
 	}
 
@@ -57,5 +63,11 @@ func (s Server) githubHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.updatedRepos <- &syncRequest{repo: &pushEvent.Repository, headSha: pushEvent.After}
+	select {
+	case s.updatedRepos <- &syncRequest{repo: &pushEvent.Repository, headSha: pushEvent.After}:
+	default:
+		slog.Warn("sync queue full, dropping event", "repo", pushEvent.Repository.FullName)
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte("sync queue full"))
+	}
 }
