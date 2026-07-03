@@ -24,16 +24,29 @@ let
 
   webhookSecretFile = pkgs.writeText "webhook-secret" webhookSecret;
 
-  gitRepo = pkgs.runCommand "gitrepo.git" { nativeBuildInputs = [ pkgs.git ]; } ''
+  cloneHost = "githost";
+  clonePort = 8443;
+  cloneUrl = "https://${cloneHost}:${toString clonePort}/${repoName}.git";
+
+  tlsCert = pkgs.runCommand "githost-cert" { nativeBuildInputs = [ pkgs.openssl ]; } ''
+    mkdir -p "$out"
+    openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
+      -keyout "$out/key.pem" -out "$out/cert.pem" \
+      -subj "/CN=${cloneHost}" -addext "subjectAltName=DNS:${cloneHost}"
+  '';
+
+  # a bare repo laid out for dumb-http clone (update-server-info)
+  webRoot = pkgs.runCommand "gitroot" { nativeBuildInputs = [ pkgs.git ]; } ''
     export HOME=$TMPDIR
     git config --global user.email test@example.com
     git config --global user.name test
     git config --global init.defaultBranch main
     git init -q work
     ( cd work && echo hello > file.txt && git add file.txt && git commit -qm "initial commit" )
-    git clone -q --bare work "$out"
+    mkdir -p "$out"
+    git clone -q --bare work "$out/${repoName}.git"
+    git -C "$out/${repoName}.git" update-server-info
   '';
-  cloneUrl = "file://${gitRepo}";
 in
 pkgs.testers.runNixOSTest {
   name = "radicle-mirror";
@@ -43,6 +56,9 @@ pkgs.testers.runNixOSTest {
     {
       imports = [ self.nixosModules.default ];
 
+      networking.hosts."127.0.0.1" = [ cloneHost ];
+      security.pki.certificateFiles = [ "${tlsCert}/cert.pem" ];
+
       services.radicle-mirror = {
         enable = true;
         package = self.packages.${pkgs.system}.default;
@@ -51,6 +67,17 @@ pkgs.testers.runNixOSTest {
         webhookSecretPath = webhookSecretFile;
         radicleKeyPath = radicleKey;
         ghEndpoint = "http://127.0.0.1:3000/";
+        inherit cloneHost;
+      };
+
+      systemd.services.git-https = {
+        description = "HTTPS git server";
+        wantedBy = [ "multi-user.target" ];
+        before = [ "radicle-mirror.service" ];
+        serviceConfig = {
+          ExecStart = "${pkgs.python3}/bin/python3 ${./tls-fileserver.py} ${webRoot} ${tlsCert}/cert.pem ${tlsCert}/key.pem ${toString clonePort}";
+          DynamicUser = true;
+        };
       };
 
       systemd.services.fake-github = {
@@ -103,6 +130,7 @@ pkgs.testers.runNixOSTest {
     machine.wait_for_unit("radicle-mirror.service")
     machine.wait_for_open_port(3000)
     machine.wait_for_open_port(4128)
+    machine.wait_for_open_port(${toString clonePort})
 
     machine.succeed("curl -fsS http://127.0.0.1:4128/health")
 

@@ -50,6 +50,12 @@ in
       description = "GitHub API endpoint to contact.";
     };
 
+    cloneHost = lib.mkOption {
+      type = lib.types.str;
+      default = "github.com";
+      description = "Host that repositories may be cloned from over https.";
+    };
+
     ridVarName = lib.mkOption {
       type = lib.types.str;
       default = "RADICLE_RID";
@@ -76,6 +82,8 @@ in
           cfg.webhookSecretPath
           "--gh-endpoint"
           cfg.ghEndpoint
+          "--gh-clone-host"
+          cfg.cloneHost
           "--gh-rid-var-name"
           cfg.ridVarName
           "--radicle-key-path"

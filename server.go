@@ -23,6 +23,7 @@ type Server struct {
 	webhookSecret string
 	reposPath     string
 	radHome       string
+	cloneHost     string
 	githubClient  *github.Client
 	repoVarName   string
 	updatedRepos  chan *syncRequest
@@ -49,6 +50,7 @@ func runServer(args *Args) error {
 		webhookSecret: string(webhookSecret),
 		reposPath:     args.reposPath,
 		radHome:       args.radHome,
+		cloneHost:     args.cloneHost,
 		repoVarName:   args.ridVarName,
 		updatedRepos:  make(chan *syncRequest, 10000),
 	}

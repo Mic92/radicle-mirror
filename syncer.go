@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -20,8 +21,25 @@ import (
 
 type SyncState map[int]time.Time
 
+// validateCloneURL blocks non-https transports (ext::, file::) that git would
+// execute and hosts the credential helper must not leak the token to.
+func (s *Server) validateCloneURL(rawURL string) error {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("cannot parse clone url %q: %w", rawURL, err)
+	}
+	if u.Scheme != "https" {
+		return fmt.Errorf("clone url %q does not use https", rawURL)
+	}
+	if u.Hostname() != s.cloneHost {
+		return fmt.Errorf("clone url host %q is not the allowed host %q", u.Hostname(), s.cloneHost)
+	}
+	return nil
+}
+
 func (s *Server) runGitCommand(args ...string) error {
-	credsHelper := "credential.helper=!f() { echo \"username=token\"; echo \"password=$GITHUB_TOKEN\"; }; f"
+	// scope the helper to the clone host so the token never leaks to another host
+	credsHelper := fmt.Sprintf("credential.https://%s.helper=!f() { echo \"username=token\"; echo \"password=$GITHUB_TOKEN\"; }; f", s.cloneHost)
 	args = append([]string{"-c", credsHelper}, args...)
 	env := os.Environ()
 	env = append(env, "GIT_TERMINAL_PROMPT=0")
@@ -74,6 +92,9 @@ func (s *Server) syncRepo(repo *github.Repository, syncState SyncState) error {
 		}
 	} else {
 		slog.Info("syncing new repo", "repo", repo)
+	}
+	if err := s.validateCloneURL(repo.CloneUrl); err != nil {
+		return err
 	}
 	radId, err := s.githubClient.GetRepoVar(repo.Owner.Login, repo.Name, s.repoVarName, "")
 	if err != nil {

@@ -15,6 +15,7 @@ type Args struct {
 	reposPath      string
 	radHome        string
 	githubEndpoint string
+	cloneHost      string
 	addr           string
 	ridVarName     string
 }
@@ -55,6 +56,7 @@ func parseArgs() (*Args, error) {
 	flag.StringVar(&a.reposPath, "repos-path", "./repos", "Path to the repositories directory")
 	flag.StringVar(&a.radHome, "rad-home", "./radicle", "Path to the rad state")
 	flag.StringVar(&a.githubEndpoint, "gh-endpoint", "https://api.github.com/", "GitHub endpoint to contact")
+	flag.StringVar(&a.cloneHost, "gh-clone-host", "github.com", "Host that repositories may be cloned from over https")
 	flag.StringVar(&a.ridVarName, "gh-rid-var-name", "RADICLE_RID", "Name of the environment variable to set with the repository name")
 
 	flag.StringVar(&a.addr, "addr", ":4128", "Port to listen on")
