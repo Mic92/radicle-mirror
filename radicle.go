@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -110,8 +111,8 @@ func radEnv(home string) []string {
 	return append(os.Environ(), fmt.Sprintf("RAD_HOME=%s", home))
 }
 
-func getRadId(home string, repoPath string) (string, error) {
-	cmd2 := exec.Command("rad", "inspect", "--rid")
+func getRadId(ctx context.Context, home string, repoPath string) (string, error) {
+	cmd2 := exec.CommandContext(ctx, "rad", "inspect", "--rid")
 	cmd2.Dir = repoPath
 	cmd2.Env = radEnv(home)
 	stderr := bytes.Buffer{}
@@ -137,8 +138,8 @@ type RadMetadata struct {
 	Private     bool
 }
 
-func ensureRad(metadata RadMetadata) (string, error) {
-	_ = exec.Command("git", "-C", metadata.RepoPath, "remote", "remove", "rad").Run()
+func ensureRad(ctx context.Context, metadata RadMetadata) (string, error) {
+	_ = exec.CommandContext(ctx, "git", "-C", metadata.RepoPath, "remote", "remove", "rad").Run()
 	args := []string{
 		"init",
 		"--no-confirm",
@@ -154,7 +155,7 @@ func ensureRad(metadata RadMetadata) (string, error) {
 	} else {
 		args = append(args, "--public")
 	}
-	cmd := exec.Command("rad", args...)
+	cmd := exec.CommandContext(ctx, "rad", args...)
 	cmd.Dir = metadata.RepoPath
 	cmd.Env = radEnv(metadata.Home)
 	var stdout, stderr bytes.Buffer
@@ -163,5 +164,5 @@ func ensureRad(metadata RadMetadata) (string, error) {
 	if err := cmd.Run(); err != nil {
 		return "", fmt.Errorf("rad init command failed: %w, stdout: %s, stderr: %s", err, stdout.String(), stderr.String())
 	}
-	return getRadId(metadata.Home, metadata.RepoPath)
+	return getRadId(ctx, metadata.Home, metadata.RepoPath)
 }

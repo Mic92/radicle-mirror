@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"time"
 )
 
 type Args struct {
@@ -18,6 +19,8 @@ type Args struct {
 	cloneHost      string
 	addr           string
 	ridVarName     string
+	workers        int
+	syncTimeout    time.Duration
 }
 
 func printUsage() {
@@ -59,6 +62,8 @@ func parseArgs() (*Args, error) {
 	flag.StringVar(&a.cloneHost, "gh-clone-host", "github.com", "Host that repositories may be cloned from over https")
 	flag.StringVar(&a.ridVarName, "gh-rid-var-name", "RADICLE_RID", "Name of the environment variable to set with the repository name")
 
+	flag.IntVar(&a.workers, "workers", 4, "Number of concurrent repository sync workers")
+	flag.DurationVar(&a.syncTimeout, "sync-timeout", 30*time.Minute, "Timeout for a single repository sync")
 	flag.StringVar(&a.addr, "addr", ":4128", "Port to listen on")
 	flag.StringVar(&a.webhookSecretPath, "gh-webhook-secret-path", "", "Path to the webhook secret file")
 	flag.Parse()
@@ -74,6 +79,9 @@ func parseArgs() (*Args, error) {
 	}
 	if a.webhookSecretPath == "" {
 		return nil, fmt.Errorf("No --gh-webhook-secret-path set")
+	}
+	if a.workers < 1 {
+		return nil, fmt.Errorf("--workers must be at least 1")
 	}
 
 	return &a, nil

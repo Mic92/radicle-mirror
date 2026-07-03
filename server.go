@@ -16,8 +16,9 @@ import (
 
 // headSha is set only for webhook pushes, enabling a check run for the commit.
 type syncRequest struct {
-	repo    *github.Repository
-	headSha string
+	repo     *github.Repository
+	headSha  string
+	attempts int
 }
 
 type Server struct {
@@ -28,6 +29,9 @@ type Server struct {
 	githubClient  *github.Client
 	repoVarName   string
 	updatedRepos  chan *syncRequest
+	syncState     *syncState
+	workers       int
+	syncTimeout   time.Duration
 }
 
 func (s Server) healthHandler(w http.ResponseWriter, r *http.Request) {
@@ -57,6 +61,9 @@ func runServer(args *Args) error {
 		cloneHost:     args.cloneHost,
 		repoVarName:   args.ridVarName,
 		updatedRepos:  make(chan *syncRequest, 10000),
+		syncState:     newSyncState(),
+		workers:       args.workers,
+		syncTimeout:   args.syncTimeout,
 	}
 
 	node, err := NewNode(args.radHome, args.radicleKey)

@@ -14,12 +14,40 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/Mic92/radicle/github"
 )
 
-type SyncState map[int]time.Time
+const (
+	maxSyncRetries = 5
+	syncRetryBase  = 30 * time.Second
+)
+
+// syncState records the last successfully synced pushedAt per repo. Failures
+// leave the entry untouched, so the poller re-enqueues them.
+type syncState struct {
+	mu         sync.Mutex
+	lastSynced map[int]time.Time
+}
+
+func newSyncState() *syncState {
+	return &syncState{lastSynced: make(map[int]time.Time)}
+}
+
+func (s *syncState) upToDate(id int, pushedAt time.Time) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	last, ok := s.lastSynced[id]
+	return ok && !pushedAt.After(last)
+}
+
+func (s *syncState) markSynced(id int, pushedAt time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.lastSynced[id] = pushedAt
+}
 
 // validateCloneURL blocks non-https transports (ext::, file::) that git would
 // execute and hosts the credential helper must not leak the token to.
@@ -37,7 +65,7 @@ func (s *Server) validateCloneURL(rawURL string) error {
 	return nil
 }
 
-func (s *Server) runGitCommand(args ...string) error {
+func (s *Server) runGitCommand(ctx context.Context, args ...string) error {
 	// scope the helper to the clone host so the token never leaks to another host
 	credsHelper := fmt.Sprintf("credential.https://%s.helper=!f() { echo \"username=token\"; echo \"password=$GITHUB_TOKEN\"; }; f", s.cloneHost)
 	args = append([]string{"-c", credsHelper}, args...)
@@ -49,7 +77,7 @@ func (s *Server) runGitCommand(args ...string) error {
 		return fmt.Errorf("cannot get github token: %w", err)
 	}
 	env = append(env, "GITHUB_TOKEN="+token)
-	cmd := exec.Command("git", args...)
+	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Env = env
 	// capture stderr
 	var buf bytes.Buffer
@@ -71,8 +99,8 @@ func pathExists(path string) (bool, error) {
 	return false, err
 }
 
-func pushRadRepo(home string, repoPath string) error {
-	cmd := exec.Command("git", "push", "--mirror", "rad")
+func pushRadRepo(ctx context.Context, home string, repoPath string) error {
+	cmd := exec.CommandContext(ctx, "git", "push", "--mirror", "rad")
 	cmd.Dir = repoPath
 	cmd.Env = radEnv(home)
 	buf := bytes.Buffer{}
@@ -83,15 +111,10 @@ func pushRadRepo(home string, repoPath string) error {
 	return nil
 }
 
-func (s *Server) syncRepo(repo *github.Repository, syncState SyncState) error {
-	pushedAt, ok := syncState[repo.Id]
-	if ok {
-		if pushedAt.After(repo.PushedAt.Time) {
-			slog.Debug("repo is up to date, skipping", "repo", repo)
-			return nil
-		}
-	} else {
-		slog.Info("syncing new repo", "repo", repo)
+func (s *Server) syncRepo(ctx context.Context, repo *github.Repository) error {
+	if s.syncState.upToDate(repo.Id, repo.PushedAt.Time) {
+		slog.Debug("repo is up to date, skipping", "repo", repo)
+		return nil
 	}
 	if err := s.validateCloneURL(repo.CloneUrl); err != nil {
 		return err
@@ -110,19 +133,19 @@ func (s *Server) syncRepo(repo *github.Repository, syncState SyncState) error {
 			return fmt.Errorf("cannot create repo path: %w", err)
 		}
 		// use https token to clone the repo
-		err := s.runGitCommand("clone", "--mirror", repo.CloneUrl, repoPath)
+		err := s.runGitCommand(ctx, "clone", "--mirror", repo.CloneUrl, repoPath)
 		if err != nil {
 			return fmt.Errorf("cannot clone git command: %w", err)
 		}
 		slog.Info("cloning repo", "repo", repo)
 	} else {
-		err := s.runGitCommand("-C", repoPath, "remote", "set-url", "origin", repo.CloneUrl)
+		err := s.runGitCommand(ctx, "-C", repoPath, "remote", "set-url", "origin", repo.CloneUrl)
 		if err != nil {
 			return fmt.Errorf("cannot set git origin: %w", err)
 		}
 		// fetch only origin: "remote update" would also fetch the rad remote,
 		// invoking git-remote-rad without RAD_HOME set on this command
-		err = s.runGitCommand("-C", repoPath, "fetch", "--prune", "origin")
+		err = s.runGitCommand(ctx, "-C", repoPath, "fetch", "--prune", "origin")
 		if err != nil {
 			return fmt.Errorf("cannot pull repository %s: %w", repo.CloneUrl, err)
 		}
@@ -135,7 +158,7 @@ func (s *Server) syncRepo(repo *github.Repository, syncState SyncState) error {
 		ExistingRad: radId,
 		Private:     repo.Private,
 	}
-	newRadId, err := ensureRad(metadata)
+	newRadId, err := ensureRad(ctx, metadata)
 	if err != nil {
 		return fmt.Errorf("cannot initialize rad remote: %w", err)
 	}
@@ -146,10 +169,10 @@ func (s *Server) syncRepo(repo *github.Repository, syncState SyncState) error {
 		}
 	}
 	// push the changes to radicle
-	if err := pushRadRepo(s.radHome, repoPath); err != nil {
+	if err := pushRadRepo(ctx, s.radHome, repoPath); err != nil {
 		return fmt.Errorf("cannot push radicle repo: %w", err)
 	}
-	syncState[repo.Id] = repo.PushedAt.Time
+	s.syncState.markSynced(repo.Id, repo.PushedAt.Time)
 	return nil
 }
 
@@ -171,24 +194,70 @@ func (s *Server) reportCheckRun(repo *github.Repository, headSha string, syncErr
 	return s.githubClient.CreateCheckRun(repo.Owner.Login, repo.Name, run)
 }
 
+// syncer shards requests to a worker pool by repo id: serial per repo, concurrent
+// across repos, so a slow repo cannot block the others.
 func (s *Server) syncer(ctx context.Context) {
-	syncState := make(SyncState)
+	var wg sync.WaitGroup
+	shards := make([]chan *syncRequest, s.workers)
+	for i := range shards {
+		shards[i] = make(chan *syncRequest, 1024)
+		wg.Add(1)
+		go func(ch chan *syncRequest) {
+			defer wg.Done()
+			for req := range ch {
+				s.handleSync(ctx, req)
+			}
+		}(shards[i])
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
 			slog.Info("stopping syncer")
+			for _, ch := range shards {
+				close(ch)
+			}
+			wg.Wait()
 			return
 		case req := <-s.updatedRepos:
-			slog.Info("syncing repo", "repo", req.repo)
-			err := s.syncRepo(req.repo, syncState)
-			if err != nil {
-				slog.Error("cannot sync repo", "repo", req.repo, "error", err)
+			shard := shards[uint(req.repo.Id)%uint(len(shards))]
+			select {
+			case shard <- req:
+			default:
+				slog.Warn("sync shard full, dropping event", "repo", req.repo.FullName)
 			}
-			if req.headSha != "" {
-				if reportErr := s.reportCheckRun(req.repo, req.headSha, err); reportErr != nil {
-					slog.Error("cannot report check run", "repo", req.repo, "error", reportErr)
+		}
+	}
+}
+
+func (s *Server) handleSync(ctx context.Context, req *syncRequest) {
+	slog.Info("syncing repo", "repo", req.repo, "attempt", req.attempts+1)
+	syncCtx, cancel := context.WithTimeout(ctx, s.syncTimeout)
+	err := s.syncRepo(syncCtx, req.repo)
+	cancel()
+
+	if err != nil {
+		slog.Error("cannot sync repo", "repo", req.repo, "error", err)
+		// retry transient failures with exponential backoff unless shutting down
+		if ctx.Err() == nil && req.attempts+1 < maxSyncRetries {
+			retry := *req
+			retry.attempts++
+			delay := syncRetryBase << req.attempts
+			time.AfterFunc(delay, func() {
+				select {
+				case s.updatedRepos <- &retry:
+				default:
+					slog.Warn("sync queue full, dropping retry", "repo", retry.repo.FullName)
 				}
-			}
+			})
+			return
+		}
+	}
+
+	// report the final outcome (success, or the last failed attempt)
+	if req.headSha != "" {
+		if reportErr := s.reportCheckRun(req.repo, req.headSha, err); reportErr != nil {
+			slog.Error("cannot report check run", "repo", req.repo, "error", reportErr)
 		}
 	}
 }

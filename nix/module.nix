@@ -61,6 +61,18 @@ in
       description = "Host that repositories may be cloned from over https.";
     };
 
+    workers = lib.mkOption {
+      type = lib.types.ints.positive;
+      default = 4;
+      description = "Number of concurrent repository sync workers.";
+    };
+
+    syncTimeout = lib.mkOption {
+      type = lib.types.str;
+      default = "30m";
+      description = "Timeout for a single repository sync (Go duration).";
+    };
+
     ridVarName = lib.mkOption {
       type = lib.types.str;
       default = "RADICLE_RID";
@@ -91,6 +103,10 @@ in
           cfg.cloneHost
           "--gh-rid-var-name"
           cfg.ridVarName
+          "--workers"
+          (toString cfg.workers)
+          "--sync-timeout"
+          cfg.syncTimeout
           "--radicle-key-path"
           cfg.radicleKeyPath
           "--repos-path"
