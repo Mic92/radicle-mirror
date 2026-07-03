@@ -132,6 +132,24 @@ func (s *Server) syncRepo(repo *github.Repository, syncState SyncState) error {
 	return nil
 }
 
+func (s *Server) reportCheckRun(repo *github.Repository, headSha string, syncErr error) error {
+	run := github.CheckRun{
+		Name:       "radicle-mirror",
+		HeadSha:    headSha,
+		Status:     "completed",
+		Conclusion: "success",
+		Output: github.CheckRunOutput{
+			Title:   "Radicle mirror",
+			Summary: "Repository mirrored to Radicle.",
+		},
+	}
+	if syncErr != nil {
+		run.Conclusion = "failure"
+		run.Output.Summary = fmt.Sprintf("Mirror to Radicle failed: %s", syncErr)
+	}
+	return s.githubClient.CreateCheckRun(repo.Owner.Login, repo.Name, run)
+}
+
 func (s *Server) syncer(ctx context.Context) {
 	syncState := make(SyncState)
 	for {
@@ -139,10 +157,16 @@ func (s *Server) syncer(ctx context.Context) {
 		case <-ctx.Done():
 			slog.Info("stopping syncer")
 			return
-		case repo := <-s.updatedRepos:
-			slog.Info("syncing repo", "repo", repo)
-			if err := s.syncRepo(repo, syncState); err != nil {
-				slog.Error("cannot sync repo", "repo", repo, "error", err)
+		case req := <-s.updatedRepos:
+			slog.Info("syncing repo", "repo", req.repo)
+			err := s.syncRepo(req.repo, syncState)
+			if err != nil {
+				slog.Error("cannot sync repo", "repo", req.repo, "error", err)
+			}
+			if req.headSha != "" {
+				if reportErr := s.reportCheckRun(req.repo, req.headSha, err); reportErr != nil {
+					slog.Error("cannot report check run", "repo", req.repo, "error", reportErr)
+				}
 			}
 		}
 	}

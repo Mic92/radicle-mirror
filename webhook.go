@@ -17,6 +17,7 @@ import (
 
 type PushEvent struct {
 	Ref        string            `json:"ref"`
+	After      string            `json:"after"`
 	Repository github.Repository `json:"repository"`
 }
 
@@ -53,5 +54,5 @@ func (s Server) githubHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.updatedRepos <- &pushEvent.Repository
+	s.updatedRepos <- &syncRequest{repo: &pushEvent.Repository, headSha: pushEvent.After}
 }

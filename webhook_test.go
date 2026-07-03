@@ -8,8 +8,6 @@ import (
 	"os"
 	"strings"
 	"testing"
-
-	"github.com/Mic92/radicle/github"
 )
 
 func sign(body []byte, secret string) string {
@@ -41,7 +39,7 @@ func TestGithubHandler(t *testing.T) {
 	secret := "topsecret"
 	s := Server{
 		webhookSecret: secret,
-		updatedRepos:  make(chan *github.Repository, 1),
+		updatedRepos:  make(chan *syncRequest, 1),
 	}
 
 	req := httptest.NewRequest("POST", "/github", strings.NewReader(string(body)))
@@ -53,9 +51,12 @@ func TestGithubHandler(t *testing.T) {
 		t.Fatalf("unexpected status: %d", rec.Code)
 	}
 	select {
-	case repo := <-s.updatedRepos:
-		if repo.FullName != "numtide/llm-agents.nix" {
-			t.Errorf("unexpected repo: %q", repo.FullName)
+	case req := <-s.updatedRepos:
+		if req.repo.FullName != "numtide/llm-agents.nix" {
+			t.Errorf("unexpected repo: %q", req.repo.FullName)
+		}
+		if req.headSha != "0000000000000000000000000000000000000000" {
+			t.Errorf("unexpected head sha: %q", req.headSha)
 		}
 	default:
 		t.Fatal("no repo queued")
@@ -69,7 +70,7 @@ func TestGithubHandlerInvalidSignature(t *testing.T) {
 	}
 	s := Server{
 		webhookSecret: "topsecret",
-		updatedRepos:  make(chan *github.Repository, 1),
+		updatedRepos:  make(chan *syncRequest, 1),
 	}
 	req := httptest.NewRequest("POST", "/github", strings.NewReader(string(body)))
 	req.Header.Set("X-Hub-Signature-256", "sha256=bad")

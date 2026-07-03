@@ -13,13 +13,19 @@ import (
 	"github.com/Mic92/radicle/github"
 )
 
+// headSha is set only for webhook pushes, enabling a check run for the commit.
+type syncRequest struct {
+	repo    *github.Repository
+	headSha string
+}
+
 type Server struct {
 	webhookSecret string
 	reposPath     string
 	radHome       string
 	githubClient  *github.Client
 	repoVarName   string
-	updatedRepos  chan *github.Repository
+	updatedRepos  chan *syncRequest
 }
 
 func (s Server) healthHandler(w http.ResponseWriter, r *http.Request) {
@@ -44,7 +50,7 @@ func runServer(args *Args) error {
 		reposPath:     args.reposPath,
 		radHome:       args.radHome,
 		repoVarName:   args.ridVarName,
-		updatedRepos:  make(chan *github.Repository, 10000),
+		updatedRepos:  make(chan *syncRequest, 10000),
 	}
 
 	node, err := NewNode(args.radHome, args.radicleKey)

@@ -29,7 +29,7 @@ func (s Server) pollRepos(ctx context.Context) {
 			if repo.PushedAt.After(repoTimestamps[repo.Id]) {
 				slog.Info("repo has new commits", "repo", repo.FullName, "pushed_at", repo.PushedAt)
 				repoTimestamps[repo.Id] = repo.PushedAt.Time
-				s.updatedRepos <- &repo
+				s.updatedRepos <- &syncRequest{repo: &repo}
 			}
 		}
 

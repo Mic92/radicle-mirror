@@ -1,6 +1,7 @@
 package github
 
 import (
+	"bytes"
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/json"
@@ -131,30 +132,38 @@ type appInstallations struct {
 	} `json:"account"`
 }
 
-type CommitStatus struct {
-	State       string `json:"state"`
-	TargetUrl   string `json:"target_url"`
-	Description string `json:"description"`
-	Context     string `json:"context"`
+type CheckRunOutput struct {
+	Title   string `json:"title"`
+	Summary string `json:"summary"`
 }
 
+type CheckRun struct {
+	Name       string         `json:"name"`
+	HeadSha    string         `json:"head_sha"`
+	Status     string         `json:"status"`
+	Conclusion string         `json:"conclusion,omitempty"`
+	Output     CheckRunOutput `json:"output"`
+}
+
+// toJsonReader returns a *bytes.Reader so net/http can set Content-Length and
+// GetBody; a wrapped reader would be sent with chunked encoding and no length.
 func toJsonReader(v any) (io.Reader, error) {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return nil, fmt.Errorf("cannot marshal to json: %v", err)
 	}
-	return io.NopCloser(strings.NewReader(string(b))), nil
+	return bytes.NewReader(b), nil
 }
 
-func (c *Client) CreateCommitStatus(status CommitStatus, owner string, repo string, sha string) error {
-	url := fmt.Sprintf("/repos/%s/%s/statuses/%s", owner, repo, sha)
-	reader, err := toJsonReader(status)
+func (c *Client) CreateCheckRun(owner string, repo string, run CheckRun) error {
+	url := fmt.Sprintf("/repos/%s/%s/check-runs", owner, repo)
+	reader, err := toJsonReader(run)
 	if err != nil {
 		return fmt.Errorf("cannot create json reader: %v", err)
 	}
 	resp, err := c.post(url, reader)
 	if err != nil {
-		return fmt.Errorf("cannot create commit status: %v", err)
+		return fmt.Errorf("cannot create check run: %v", err)
 	}
 	if resp.StatusCode != http.StatusCreated {
 		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
