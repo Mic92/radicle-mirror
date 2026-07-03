@@ -94,6 +94,7 @@ func (c *Client) doRequest(method string, p string, body io.Reader, token string
 		}
 		if (resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusTooManyRequests) && resp.Header.Get("Retry-After") != "" {
 			retryAfter, err := time.ParseDuration(resp.Header.Get("Retry-After") + "s")
+			resp.Body.Close()
 			if err != nil {
 				return nil, fmt.Errorf("cannot parse Retry-After header: %v", err)
 			}
@@ -165,6 +166,7 @@ func (c *Client) CreateCheckRun(owner string, repo string, run CheckRun) error {
 	if err != nil {
 		return fmt.Errorf("cannot create check run: %v", err)
 	}
+	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusCreated {
 		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
@@ -176,6 +178,7 @@ func (c *Client) appInstallations(jwt string) ([]appInstallations, error) {
 	if err != nil {
 		return nil, fmt.Errorf("cannot get app installations: %v", err)
 	}
+	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
@@ -196,6 +199,7 @@ func (c *Client) createInstallationAccessToken(installationId int, jwt string) (
 	if err != nil {
 		return "", fmt.Errorf("cannot create installation access token: %v", err)
 	}
+	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusCreated {
 		return "", fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
@@ -265,9 +269,11 @@ func (c *Client) InstallationRepositories() ([]Repository, error) {
 			return nil, fmt.Errorf("cannot get installation repositories: %v", err)
 		}
 		if resp.StatusCode != http.StatusOK {
+			resp.Body.Close()
 			return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 		}
 		repoBody, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
 		if err != nil {
 			return nil, fmt.Errorf("cannot read installation repositories response body: %v", err)
 		}
@@ -289,6 +295,7 @@ func (c *Client) GetRepoVar(owner string, repo string, name string, defaultVal s
 	if err != nil {
 		return "", fmt.Errorf("cannot get repo var: %s", err)
 	}
+	defer resp.Body.Close()
 
 	var repoVar struct {
 		Name      string `json:"name"`
@@ -314,17 +321,42 @@ func (c *Client) GetRepoVar(owner string, repo string, name string, defaultVal s
 }
 
 func (c *Client) SetRepoVar(owner string, repo string, name string, value string) error {
-	var reqBody struct {
+	reader, err := toJsonReader(struct {
 		Value string `json:"value"`
-	}
-	reqBody.Value = value
-	reader, err := toJsonReader(reqBody)
+	}{value})
 	if err != nil {
 		return fmt.Errorf("cannot encode json: %s", err)
 	}
-	_, err = c.patch(fmt.Sprintf("/repos/%s/%s/actions/variables/%s", owner, repo, name), reader)
+	resp, err := c.patch(fmt.Sprintf("/repos/%s/%s/actions/variables/%s", owner, repo, name), reader)
 	if err != nil {
-		return fmt.Errorf("cannot update variable '%s': %s", name, value)
+		return fmt.Errorf("cannot update variable %q: %w", name, err)
+	}
+	defer resp.Body.Close()
+	// the variable may not exist yet; create it
+	if resp.StatusCode == http.StatusNotFound {
+		return c.createRepoVar(owner, repo, name, value)
+	}
+	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("cannot update variable %q: unexpected status code %d", name, resp.StatusCode)
+	}
+	return nil
+}
+
+func (c *Client) createRepoVar(owner string, repo string, name string, value string) error {
+	reader, err := toJsonReader(struct {
+		Name  string `json:"name"`
+		Value string `json:"value"`
+	}{name, value})
+	if err != nil {
+		return fmt.Errorf("cannot encode json: %s", err)
+	}
+	resp, err := c.post(fmt.Sprintf("/repos/%s/%s/actions/variables", owner, repo), reader)
+	if err != nil {
+		return fmt.Errorf("cannot create variable %q: %w", name, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		return fmt.Errorf("cannot create variable %q: unexpected status code %d", name, resp.StatusCode)
 	}
 	return nil
 }
