@@ -83,7 +83,7 @@ func NewNode(home string, privateKeyPath string) (*RadNode, error) {
 
 	// wait for the control socket to appear so callers can safely use the node
 	socket := filepath.Join(home, "node", "control.sock")
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		if _, err := os.Stat(socket); err == nil {
 			return &RadNode{cmd, home}, nil
 		}
@@ -112,14 +112,13 @@ func radEnv(home string) []string {
 }
 
 func getRadId(ctx context.Context, home string, repoPath string) (string, error) {
-	cmd2 := exec.CommandContext(ctx, "rad", "inspect", "--rid")
-	cmd2.Dir = repoPath
-	cmd2.Env = radEnv(home)
-	stderr := bytes.Buffer{}
-	stdout := bytes.Buffer{}
-	cmd2.Stderr = &stderr
-	cmd2.Stdout = &stdout
-	if err := cmd2.Run(); err != nil {
+	cmd := exec.CommandContext(ctx, "rad", "inspect", "--rid")
+	cmd.Dir = repoPath
+	cmd.Env = radEnv(home)
+	var stdout, stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	cmd.Stdout = &stdout
+	if err := cmd.Run(); err != nil {
 		return "", fmt.Errorf("rad inspect command failed: %w, output: %s", err, stderr.String())
 	}
 	rid := strings.TrimSpace(stdout.String())
@@ -147,8 +146,7 @@ func ensureRad(ctx context.Context, metadata RadMetadata) (string, error) {
 		"--description", metadata.Description,
 	}
 	if metadata.ExistingRad != "" {
-		args = append(args, "--existing")
-		args = append(args, metadata.ExistingRad)
+		args = append(args, "--existing", metadata.ExistingRad)
 	}
 	if metadata.Private {
 		args = append(args, "--private")

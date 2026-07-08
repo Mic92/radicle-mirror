@@ -2,24 +2,14 @@ package main
 
 import (
 	"context"
-	"fmt"
-	"github.com/Mic92/radicle/github"
 	"log/slog"
 	"time"
 )
 
-// Polls github repositories for new commits (in case webhook doesn't work)
-func (s Server) refreshRepos() ([]github.Repository, error) {
-	repos, err := s.githubClient.InstallationRepositories()
-	if err != nil {
-		return nil, fmt.Errorf("cannot get installation repositories: %v", err)
-	}
-	return repos, nil
-}
-
+// pollRepos polls github repositories for new commits (in case a webhook was missed).
 func (s Server) pollRepos(ctx context.Context) {
 	for {
-		newRepos, err := s.refreshRepos()
+		newRepos, err := s.githubClient.InstallationRepositories()
 		if err != nil {
 			slog.Error("cannot refresh repositories", "error", err)
 		}

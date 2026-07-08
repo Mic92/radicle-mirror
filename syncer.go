@@ -70,21 +70,16 @@ func (s *Server) runGitCommand(ctx context.Context, args ...string) error {
 	// scope the helper to the clone host so the token never leaks to another host
 	credsHelper := fmt.Sprintf("credential.https://%s.helper=!f() { echo \"username=token\"; echo \"password=$GITHUB_TOKEN\"; }; f", s.cloneHost)
 	args = append([]string{"-c", credsHelper}, args...)
-	env := os.Environ()
-	env = append(env, "GIT_TERMINAL_PROMPT=0")
-	// GITHUB_TOKEN
 	token, err := s.githubClient.Token()
 	if err != nil {
 		return fmt.Errorf("cannot get github token: %w", err)
 	}
-	env = append(env, "GITHUB_TOKEN="+token)
 	cmd := exec.CommandContext(ctx, "git", args...)
-	cmd.Env = env
-	// capture stderr
+	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GITHUB_TOKEN="+token)
 	var buf bytes.Buffer
 	cmd.Stderr = &buf
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("cannot start git command: %w, output: %s", err, buf.String())
+		return fmt.Errorf("git command failed: %w, output: %s", err, buf.String())
 	}
 	return nil
 }
@@ -120,7 +115,6 @@ func (s *Server) syncRepo(ctx context.Context, repo *github.Repository) error {
 	if err := s.validateCloneURL(repo.CloneUrl); err != nil {
 		return err
 	}
-	// run git to fetch the latest changes and update the radicle repo to s.reposPath
 	repoPath := filepath.Join(s.reposPath, strconv.Itoa(repo.Owner.Id), strconv.Itoa(repo.Id))
 	// local .rid file is authoritative; GitHub variable is only a recovery fallback
 	ridPath := repoPath + ".rid"
@@ -135,10 +129,9 @@ func (s *Server) syncRepo(ctx context.Context, repo *github.Repository) error {
 		if err := os.MkdirAll(repoPath, 0o755); err != nil {
 			return fmt.Errorf("cannot create repo path: %w", err)
 		}
-		// use https token to clone the repo
 		err := s.runGitCommand(ctx, "clone", "--mirror", repo.CloneUrl, repoPath)
 		if err != nil {
-			return fmt.Errorf("cannot clone git command: %w", err)
+			return fmt.Errorf("cannot clone repository %s: %w", repo.CloneUrl, err)
 		}
 		slog.Info("cloning repo", "repo", repo)
 	} else {
@@ -174,7 +167,6 @@ func (s *Server) syncRepo(ctx context.Context, repo *github.Repository) error {
 			slog.Warn("cannot publish rad id to github", "repo", repo.FullName, "error", err)
 		}
 	}
-	// push the changes to radicle
 	if err := pushRadRepo(ctx, s.radHome, repoPath); err != nil {
 		return fmt.Errorf("cannot push radicle repo: %w", err)
 	}

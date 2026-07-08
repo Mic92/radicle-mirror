@@ -22,10 +22,10 @@ func (c *Client) Token() (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("cannot request access token: %v", err)
 		}
-		c._token = token
+		c.token = token
 		c.tokenAge = time.Now()
 	}
-	return c._token, nil
+	return c.token, nil
 }
 
 func (c *Client) generateJwt() (string, error) {
@@ -74,12 +74,11 @@ func (c *Client) requestAccessToken() (string, error) {
 		if item.AppId != c.appId {
 			continue
 		}
-		installationId := item.Id
-		response, err := c.createInstallationAccessToken(installationId, generatedJwt)
+		token, err := c.createInstallationAccessToken(item.Id, generatedJwt)
 		if err != nil {
 			return "", fmt.Errorf("cannot create installation access token: %v", err)
 		}
-		return response, nil
+		return token, nil
 	}
 	return "", fmt.Errorf("installation not found for app id %d", c.appId)
 }

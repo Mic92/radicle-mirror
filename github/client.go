@@ -23,7 +23,7 @@ type Client struct {
 	client     http.Client
 	tokenAge   time.Time
 	mu         sync.Mutex
-	_token     string
+	token      string
 }
 
 func NewClient(baseUrl string, appId int, keyPath string) (*Client, error) {
@@ -41,7 +41,6 @@ func NewClient(baseUrl string, appId int, keyPath string) (*Client, error) {
 		appId:      appId,
 		client:     *http.DefaultClient,
 		tokenAge:   time.Unix(0, 0),
-		_token:     "",
 		privateKey: rsaKey,
 	}, nil
 }
@@ -277,7 +276,7 @@ func (c *Client) InstallationRepositories() ([]Repository, error) {
 		if err != nil {
 			return nil, fmt.Errorf("cannot read installation repositories response body: %v", err)
 		}
-		err = json.Unmarshal([]byte(repoBody), &installationRepos)
+		err = json.Unmarshal(repoBody, &installationRepos)
 		if err != nil {
 			return nil, fmt.Errorf("cannot decode installation repositories response body: %v", err)
 		}
@@ -285,7 +284,7 @@ func (c *Client) InstallationRepositories() ([]Repository, error) {
 		if len(repos) >= installationRepos.TotalCount || len(installationRepos.Repositories) < 100 {
 			break
 		}
-		page += 1
+		page++
 	}
 	return repos, nil
 }
@@ -298,10 +297,7 @@ func (c *Client) GetRepoVar(owner string, repo string, name string, defaultVal s
 	defer resp.Body.Close()
 
 	var repoVar struct {
-		Name      string `json:"name"`
-		Value     string `json:"value"`
-		CreatedAt string `json:"created_at"`
-		UpdatedAt string `json:"updated_at"`
+		Value string `json:"value"`
 	}
 	if resp.StatusCode == http.StatusNotFound {
 		return defaultVal, nil
@@ -313,7 +309,7 @@ func (c *Client) GetRepoVar(owner string, repo string, name string, defaultVal s
 	if err != nil {
 		return "", fmt.Errorf("cannot read repo var: %s", err)
 	}
-	err = json.Unmarshal([]byte(repoBody), &repoVar)
+	err = json.Unmarshal(repoBody, &repoVar)
 	if err != nil {
 		return "", fmt.Errorf("cannot parse repo var: %s", err)
 	}
