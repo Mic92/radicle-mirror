@@ -20,6 +20,7 @@ buildGoModule {
   src = lib.cleanSource ../.;
   vendorHash = null;
   nativeBuildInputs = [ makeWrapper ];
+  nativeCheckInputs = [ git ];
   postInstall = ''
     wrapProgram $out/bin/radicle \
       --prefix PATH : ${lib.makeBinPath runtimeDeps}
