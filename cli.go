@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -18,6 +19,7 @@ type Args struct {
 	cloneHost      string
 	addr           string
 	ridVarName     string
+	mirroredForks  map[string]bool
 	workers        int
 	syncTimeout    time.Duration
 }
@@ -33,11 +35,19 @@ func parseArgs() (*Args, error) {
 	flag.StringVar(&a.cloneHost, "gh-clone-host", "github.com", "Host that repositories may be cloned from over https")
 	flag.StringVar(&a.ridVarName, "gh-rid-var-name", "RADICLE_RID", "Name of the environment variable to set with the repository name")
 
+	var mirroredForks string
+	flag.StringVar(&mirroredForks, "mirror-forks", "", "Comma-separated owner/repo names of forks to mirror; other forks are skipped")
 	flag.IntVar(&a.workers, "workers", 4, "Number of concurrent repository sync workers")
 	flag.DurationVar(&a.syncTimeout, "sync-timeout", 30*time.Minute, "Timeout for a single repository sync")
 	flag.StringVar(&a.addr, "addr", ":4128", "Port to listen on")
 	flag.StringVar(&a.webhookSecretPath, "gh-webhook-secret-path", "", "Path to the webhook secret file")
 	flag.Parse()
+	a.mirroredForks = make(map[string]bool)
+	for _, name := range strings.Split(mirroredForks, ",") {
+		if name = strings.TrimSpace(name); name != "" {
+			a.mirroredForks[name] = true
+		}
+	}
 	if a.radicleKey == "" {
 		return nil, fmt.Errorf("no --radicle-key-path set")
 	}

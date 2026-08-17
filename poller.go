@@ -16,7 +16,9 @@ func (s Server) pollRepos(ctx context.Context) {
 		// enqueue repos not yet synced to their latest push, which also retries
 		// previously failed syncs
 		for _, repo := range newRepos {
-			if s.syncState.upToDate(repo.Id, repo.PushedAt.Time) {
+			// filtered here as well to avoid re-enqueueing skipped forks on
+			// every poll cycle
+			if s.skipRepo(&repo) || s.syncState.upToDate(repo.Id, repo.PushedAt.Time) {
 				continue
 			}
 			slog.Info("repo has new commits", "repo", repo.FullName, "pushed_at", repo.PushedAt)

@@ -249,6 +249,7 @@ type Repository struct {
 	PushedAt    Timestamp `json:"pushed_at"`
 	Description string    `json:"description"`
 	Private     bool      `json:"private"`
+	Fork        bool      `json:"fork"`
 	Owner       Owner     `json:"owner"`
 	CloneUrl    string    `json:"clone_url"`
 }

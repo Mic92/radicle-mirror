@@ -61,6 +61,13 @@ in
       description = "Host that repositories may be cloned from over https.";
     };
 
+    mirroredForks = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      example = [ "Mic92/nixpkgs" ];
+      description = "Forks (owner/repo) to mirror; all other forks are skipped.";
+    };
+
     workers = lib.mkOption {
       type = lib.types.ints.positive;
       default = 4;
@@ -106,6 +113,8 @@ in
           cfg.cloneHost
           "--gh-rid-var-name"
           cfg.ridVarName
+          "--mirror-forks"
+          (lib.concatStringsSep "," cfg.mirroredForks)
           "--workers"
           (toString cfg.workers)
           "--sync-timeout"
