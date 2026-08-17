@@ -95,6 +95,13 @@ func pathExists(path string) (bool, error) {
 	return false, err
 }
 
+func isGitRepo(path string) bool {
+	cmd := exec.Command("git", "-C", path, "rev-parse", "--git-dir")
+	cmd.Stdout = nil
+	cmd.Stderr = nil
+	return cmd.Run() == nil
+}
+
 func pushRadRepo(ctx context.Context, home string, repoPath string) error {
 	cmd := exec.CommandContext(ctx, "git", "push", "--mirror", "rad")
 	cmd.Dir = repoPath
@@ -136,7 +143,15 @@ func (s *Server) syncRepo(ctx context.Context, repo *github.Repository) error {
 	exists, err := pathExists(repoPath)
 	if err != nil {
 		return fmt.Errorf("cannot check if repo path exists: %w", err)
-	} else if !exists {
+	}
+	// a failed clone can leave a non-git directory behind
+	if exists && !isGitRepo(repoPath) {
+		if err := os.RemoveAll(repoPath); err != nil {
+			return fmt.Errorf("cannot remove invalid repo path: %w", err)
+		}
+		exists = false
+	}
+	if !exists {
 		if err := os.MkdirAll(repoPath, 0o755); err != nil {
 			return fmt.Errorf("cannot create repo path: %w", err)
 		}
