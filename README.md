@@ -8,11 +8,17 @@ Radicle node. It also polls periodically, so missed webhooks or failed syncs
 are retried. The Radicle RID for each mirrored repository is reported back to
 GitHub as a check run on the pushed commit.
 
+Forks are skipped by default; forks that should still be mirrored can be
+allow-listed with `-mirror-forks` (see below).
+
 ## Setup
 
 1. Create a GitHub App with:
-   - Webhook URL pointing at this service (default port 4128), plus a webhook secret
-   - Repository permissions: Contents (read), Checks (write)
+   - Webhook URL pointing at this service's `/github` endpoint (default port
+     4128), plus a webhook secret
+   - Repository permissions: Contents (read), Checks (write), and optionally
+     Variables (read and write) to publish the Radicle RID as a repository
+     variable
    - Subscribed to the "Push" event
 2. Generate a private key for the App and note the App ID.
 3. Create an ed25519 SSH key to use as the Radicle identity:
@@ -28,7 +34,8 @@ radicle-mirror \
   -gh-webhook-secret-path /run/secrets/webhook-secret \
   -radicle-key-path /run/secrets/radicle-key \
   -repos-path /var/lib/radicle-mirror/repos \
-  -rad-home /var/lib/radicle-mirror/radicle
+  -rad-home /var/lib/radicle-mirror/radicle \
+  -mirror-forks myorg/some-fork,myorg/another-fork
 ```
 
 Run `radicle-mirror -help` for all flags (listen address, worker count, sync
@@ -52,6 +59,8 @@ nix run github:Mic92/radicle-mirror -- -help
     ghAppKeyPath = "/run/secrets/gh-app-key.pem";
     webhookSecretPath = "/run/secrets/webhook-secret";
     radicleKeyPath = "/run/secrets/radicle-key";
+    # forks are skipped unless listed here
+    mirroredForks = [ "myorg/some-fork" ];
   };
 }
 ```
