@@ -56,7 +56,8 @@ func TestGithubHandler(t *testing.T) {
 		if req.repo.FullName != "numtide/llm-agents.nix" {
 			t.Errorf("unexpected repo: %q", req.repo.FullName)
 		}
-		if req.headSha != "0000000000000000000000000000000000000000" {
+		// fixture is a branch deletion; no check run possible for the zero sha
+		if req.headSha != "" {
 			t.Errorf("unexpected head sha: %q", req.headSha)
 		}
 	default:
