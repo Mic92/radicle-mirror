@@ -60,3 +60,16 @@ func TestHasBranches(t *testing.T) {
 	if !hasBranches(work) {
 		t.Error("repo with a commit reported as having no branches")
 	}
+}
+
+func TestRidFromExistsError(t *testing.T) {
+	out := "✗ Error: repository: git: attempt to reinitialize " +
+		"'/var/lib/private/radicle-mirror/rad/storage/z3StaJpzQNGhhkPfhCtRxSmNZZpu9'; " +
+		"class=Repository (6); code=Exists (-4)"
+	if got := ridFromExistsError(out); got != "rad:z3StaJpzQNGhhkPfhCtRxSmNZZpu9" {
+		t.Errorf("unexpected rid: %q", got)
+	}
+	if got := ridFromExistsError("some other error"); got != "" {
+		t.Errorf("expected empty rid, got %q", got)
+	}
+}

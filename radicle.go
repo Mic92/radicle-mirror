@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"syscall"
 	"time"
@@ -137,6 +138,16 @@ type RadMetadata struct {
 	Private     bool
 }
 
+// recovers the rid when an earlier init created storage but crashed before
+// the rid was persisted
+func ridFromExistsError(output string) string {
+	m := regexp.MustCompile(`attempt to reinitialize '[^']*/(z[1-9A-HJ-NP-Za-km-z]+)'`).FindStringSubmatch(output)
+	if m == nil {
+		return ""
+	}
+	return "rad:" + m[1]
+}
+
 func ensureRad(ctx context.Context, metadata RadMetadata) (string, error) {
 	_ = exec.CommandContext(ctx, "git", "-C", metadata.RepoPath, "remote", "remove", "rad").Run()
 	args := []string{
@@ -160,6 +171,10 @@ func ensureRad(ctx context.Context, metadata RadMetadata) (string, error) {
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
+		if rid := ridFromExistsError(stdout.String() + stderr.String()); rid != "" && metadata.ExistingRad == "" {
+			metadata.ExistingRad = rid
+			return ensureRad(ctx, metadata)
+		}
 		return "", fmt.Errorf("rad init command failed: %w, stdout: %s, stderr: %s", err, stdout.String(), stderr.String())
 	}
 	return getRadId(ctx, metadata.Home, metadata.RepoPath)
