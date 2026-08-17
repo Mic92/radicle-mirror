@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/Mic92/radicle/github"
 )
@@ -63,8 +64,12 @@ func (s Server) githubHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	headSha := pushEvent.After
+	if headSha == strings.Repeat("0", 40) {
+		headSha = ""
+	}
 	select {
-	case s.updatedRepos <- &syncRequest{repo: &pushEvent.Repository, headSha: pushEvent.After}:
+	case s.updatedRepos <- &syncRequest{repo: &pushEvent.Repository, headSha: headSha}:
 	default:
 		slog.Warn("sync queue full, dropping event", "repo", pushEvent.Repository.FullName)
 		w.WriteHeader(http.StatusServiceUnavailable)

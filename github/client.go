@@ -167,7 +167,8 @@ func (c *Client) CreateCheckRun(owner string, repo string, run CheckRun) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusCreated {
-		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		return fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, body)
 	}
 	return nil
 }
