@@ -21,6 +21,7 @@ type Args struct {
 	ridVarName           string
 	mirroredForks        map[string]bool
 	allowedOwners        map[string]bool
+	delegates            []string
 	radListen            []string
 	radExternalAddresses []string
 	workers              int
@@ -50,6 +51,8 @@ func parseArgs() (*Args, error) {
 
 	var mirroredForks string
 	flag.StringVar(&mirroredForks, "mirror-forks", "", "Comma-separated owner/repo names of forks to mirror; other forks are skipped")
+	var delegates string
+	flag.StringVar(&delegates, "delegate", "", "Comma-separated DIDs to add as delegates on mirrored repos")
 	var allowedOwners string
 	flag.StringVar(&allowedOwners, "allowed-owners", "", "Comma-separated GitHub users/orgs to mirror; empty allows all")
 	var radListen, radExternal string
@@ -66,6 +69,7 @@ func parseArgs() (*Args, error) {
 			a.mirroredForks[name] = true
 		}
 	}
+	a.delegates = splitList(delegates)
 	a.allowedOwners = make(map[string]bool)
 	for _, name := range splitList(allowedOwners) {
 		a.allowedOwners[name] = true

@@ -30,6 +30,7 @@ type Server struct {
 	repoVarName   string
 	mirroredForks map[string]bool
 	allowedOwners map[string]bool
+	delegates     []string
 	updatedRepos  chan *syncRequest
 	syncState     *syncState
 	workers       int
@@ -65,6 +66,7 @@ func runServer(args *Args) error {
 		repoVarName:   args.ridVarName,
 		mirroredForks: args.mirroredForks,
 		allowedOwners: args.allowedOwners,
+		delegates:     args.delegates,
 		updatedRepos:  make(chan *syncRequest, 10000),
 		syncState:     newSyncState(),
 		workers:       args.workers,

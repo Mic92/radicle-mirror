@@ -68,6 +68,13 @@ in
       description = "Forks (owner/repo) to mirror; all other forks are skipped.";
     };
 
+    delegates = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      example = [ "did:key:z6MkjE3BSJn4Y129rhqi5rViSUru8KSBcCQdQcDZq1cnjumw" ];
+      description = "Additional DIDs added as delegates on mirrored repositories.";
+    };
+
     allowedOwners = lib.mkOption {
       type = lib.types.listOf lib.types.str;
       default = [ ];
@@ -136,6 +143,8 @@ in
           cfg.ridVarName
           "--mirror-forks"
           (lib.concatStringsSep "," cfg.mirroredForks)
+          "--delegate"
+          (lib.concatStringsSep "," cfg.delegates)
           "--allowed-owners"
           (lib.concatStringsSep "," cfg.allowedOwners)
           "--rad-listen"

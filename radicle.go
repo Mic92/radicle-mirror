@@ -180,6 +180,48 @@ func ridFromExistsError(output string) string {
 	return "rad:" + m[1]
 }
 
+func missingDelegates(current string, wanted []string) []string {
+	missing := []string{}
+	for _, did := range wanted {
+		if !strings.Contains(current, did) {
+			missing = append(missing, did)
+		}
+	}
+	return missing
+}
+
+func ensureDelegates(ctx context.Context, home string, repoPath string, delegates []string) error {
+	if len(delegates) == 0 {
+		return nil
+	}
+	inspect := exec.CommandContext(ctx, "rad", "inspect", "--delegates")
+	inspect.Dir = repoPath
+	inspect.Env = radEnv(home)
+	out, err := inspect.Output()
+	if err != nil {
+		return fmt.Errorf("rad inspect --delegates failed: %w", err)
+	}
+	missing := missingDelegates(string(out), delegates)
+	if len(missing) == 0 {
+		return nil
+	}
+	args := []string{"id", "update", "--title", "Add delegates", "--description", "Added by radicle-mirror"}
+	for _, did := range missing {
+		args = append(args, "--delegate", did)
+	}
+	cmd := exec.CommandContext(ctx, "rad", args...)
+	cmd.Dir = repoPath
+	cmd.Env = radEnv(home)
+	var buf bytes.Buffer
+	cmd.Stdout = &buf
+	cmd.Stderr = &buf
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("rad id update failed: %w, output: %s", err, buf.String())
+	}
+	slog.Info("added delegates", "repo", repoPath, "delegates", missing)
+	return nil
+}
+
 func isMissingIdentityError(output string) bool {
 	return strings.Contains(output, "missing identity document")
 }

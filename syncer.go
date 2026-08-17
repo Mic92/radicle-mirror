@@ -212,6 +212,9 @@ func (s *Server) syncRepo(ctx context.Context, repo *github.Repository) error {
 			slog.Warn("cannot publish rad id to github", "repo", repo.FullName, "error", err)
 		}
 	}
+	if err := ensureDelegates(ctx, s.radHome, repoPath, s.delegates); err != nil {
+		slog.Warn("cannot add delegates", "repo", repo.FullName, "error", err)
+	}
 	if err := pushRadRepo(ctx, s.radHome, repoPath); err != nil {
 		return fmt.Errorf("cannot push radicle repo: %w", err)
 	}
