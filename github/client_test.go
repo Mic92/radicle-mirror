@@ -12,8 +12,8 @@ func TestJoinURL(t *testing.T) {
 		{"https://api.github.com", "app/installations", "https://api.github.com/app/installations"},
 		{
 			"https://api.github.com/",
-			"/installation/repositories/?per_page=100&page=1",
-			"https://api.github.com/installation/repositories/?per_page=100&page=1",
+			"/installation/repositories?per_page=100&page=1",
+			"https://api.github.com/installation/repositories?per_page=100&page=1",
 		},
 	}
 	for _, tt := range tests {

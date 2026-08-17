@@ -263,7 +263,7 @@ func (c *Client) InstallationRepositories() ([]Repository, error) {
 	var installationRepos InstallationRepositories
 	page := 1
 	for {
-		resp, err := c.get(fmt.Sprintf("/installation/repositories/?per_page=100&page=%d", page))
+		resp, err := c.get(fmt.Sprintf("/installation/repositories?per_page=100&page=%d", page))
 		if err != nil {
 			return nil, fmt.Errorf("cannot get installation repositories: %v", err)
 		}
