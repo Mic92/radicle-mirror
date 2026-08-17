@@ -48,16 +48,17 @@ func runServer(args *Args) error {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	webhookSecret, err := os.ReadFile(args.webhookSecretPath)
+	rawSecret, err := os.ReadFile(args.webhookSecretPath)
 	if err != nil {
 		return fmt.Errorf("cannot read webhook secret: %v", err)
 	}
-	if len(bytes.TrimSpace(webhookSecret)) == 0 {
+	webhookSecret := string(bytes.TrimSpace(rawSecret))
+	if webhookSecret == "" {
 		return fmt.Errorf("webhook secret is empty")
 	}
 
 	s := Server{
-		webhookSecret: string(webhookSecret),
+		webhookSecret: webhookSecret,
 		reposPath:     args.reposPath,
 		radHome:       args.radHome,
 		cloneHost:     args.cloneHost,
