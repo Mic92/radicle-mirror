@@ -66,11 +66,11 @@ func (s *Server) validateCloneURL(rawURL string) error {
 	return nil
 }
 
-func (s *Server) runGitCommand(ctx context.Context, args ...string) error {
+func (s *Server) runGitCommand(ctx context.Context, owner string, args ...string) error {
 	// scope the helper to the clone host so the token never leaks to another host
 	credsHelper := fmt.Sprintf("credential.https://%s.helper=!f() { echo \"username=token\"; echo \"password=$GITHUB_TOKEN\"; }; f", s.cloneHost)
 	args = append([]string{"-c", credsHelper}, args...)
-	token, err := s.githubClient.Token()
+	token, err := s.githubClient.TokenForOwner(owner)
 	if err != nil {
 		return fmt.Errorf("cannot get github token: %w", err)
 	}
@@ -169,19 +169,19 @@ func (s *Server) syncRepo(ctx context.Context, repo *github.Repository) error {
 		if err := os.MkdirAll(repoPath, 0o755); err != nil {
 			return fmt.Errorf("cannot create repo path: %w", err)
 		}
-		err := s.runGitCommand(ctx, "clone", "--mirror", repo.CloneUrl, repoPath)
+		err := s.runGitCommand(ctx, repo.Owner.Login, "clone", "--mirror", repo.CloneUrl, repoPath)
 		if err != nil {
 			return fmt.Errorf("cannot clone repository %s: %w", repo.CloneUrl, err)
 		}
 		slog.Info("cloning repo", "repo", repo)
 	} else {
-		err := s.runGitCommand(ctx, "-C", repoPath, "remote", "set-url", "origin", repo.CloneUrl)
+		err := s.runGitCommand(ctx, repo.Owner.Login, "-C", repoPath, "remote", "set-url", "origin", repo.CloneUrl)
 		if err != nil {
 			return fmt.Errorf("cannot set git origin: %w", err)
 		}
 		// fetch only origin: "remote update" would also fetch the rad remote,
 		// invoking git-remote-rad without RAD_HOME set on this command
-		err = s.runGitCommand(ctx, "-C", repoPath, "fetch", "--prune", "origin")
+		err = s.runGitCommand(ctx, repo.Owner.Login, "-C", repoPath, "fetch", "--prune", "origin")
 		if err != nil {
 			return fmt.Errorf("cannot pull repository %s: %w", repo.CloneUrl, err)
 		}

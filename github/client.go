@@ -17,13 +17,19 @@ import (
 )
 
 type Client struct {
-	baseURL    string
-	appId      int
-	privateKey *rsa.PrivateKey
-	client     http.Client
-	tokenAge   time.Time
-	mu         sync.Mutex
-	token      string
+	baseURL       string
+	appId         int
+	privateKey    *rsa.PrivateKey
+	client        http.Client
+	mu            sync.Mutex
+	installations []appInstallations
+	instAge       time.Time
+	tokens        map[int]*cachedToken
+}
+
+type cachedToken struct {
+	token string
+	age   time.Time
 }
 
 func NewClient(baseUrl string, appId int, keyPath string) (*Client, error) {
@@ -40,7 +46,7 @@ func NewClient(baseUrl string, appId int, keyPath string) (*Client, error) {
 		baseURL:    baseUrl,
 		appId:      appId,
 		client:     *http.DefaultClient,
-		tokenAge:   time.Unix(0, 0),
+		tokens:     make(map[int]*cachedToken),
 		privateKey: rsaKey,
 	}, nil
 }
@@ -104,24 +110,26 @@ func (c *Client) doRequest(method string, p string, body io.Reader, token string
 	}
 }
 
-func (c *Client) request(method string, p string, body io.Reader) (*http.Response, error) {
-	token, err := c.Token()
+// request authenticates with the token of the installation owned by the
+// repository owner; each installation has its own access token.
+func (c *Client) request(method string, p string, body io.Reader, owner string) (*http.Response, error) {
+	token, err := c.TokenForOwner(owner)
 	if err != nil {
 		return nil, fmt.Errorf("cannot get token: %v", err)
 	}
 	return c.doRequest(method, p, body, token)
 }
 
-func (c *Client) get(path string) (*http.Response, error) {
-	return c.request("GET", path, nil)
+func (c *Client) get(path string, owner string) (*http.Response, error) {
+	return c.request("GET", path, nil, owner)
 }
 
-func (c *Client) post(path string, body io.Reader) (*http.Response, error) {
-	return c.request("POST", path, body)
+func (c *Client) post(path string, body io.Reader, owner string) (*http.Response, error) {
+	return c.request("POST", path, body, owner)
 }
 
-func (c *Client) patch(path string, body io.Reader) (*http.Response, error) {
-	return c.request("PATCH", path, body)
+func (c *Client) patch(path string, body io.Reader, owner string) (*http.Response, error) {
+	return c.request("PATCH", path, body, owner)
 }
 
 type appInstallations struct {
@@ -161,7 +169,7 @@ func (c *Client) CreateCheckRun(owner string, repo string, run CheckRun) error {
 	if err != nil {
 		return fmt.Errorf("cannot create json reader: %v", err)
 	}
-	resp, err := c.post(url, reader)
+	resp, err := c.post(url, reader, owner)
 	if err != nil {
 		return fmt.Errorf("cannot create check run: %v", err)
 	}
@@ -261,11 +269,31 @@ type InstallationRepositories struct {
 }
 
 func (c *Client) InstallationRepositories() ([]Repository, error) {
+	installations, err := c.installationList()
+	if err != nil {
+		return nil, err
+	}
+	repos := make([]Repository, 0)
+	for _, inst := range installations {
+		instRepos, err := c.repositoriesOfInstallation(inst.Id)
+		if err != nil {
+			return nil, fmt.Errorf("installation %s: %w", inst.Account.Login, err)
+		}
+		repos = append(repos, instRepos...)
+	}
+	return repos, nil
+}
+
+func (c *Client) repositoriesOfInstallation(installationId int) ([]Repository, error) {
+	token, err := c.tokenForInstallation(installationId)
+	if err != nil {
+		return nil, err
+	}
 	repos := make([]Repository, 0)
 	var installationRepos InstallationRepositories
 	page := 1
 	for {
-		resp, err := c.get(fmt.Sprintf("/installation/repositories?per_page=100&page=%d", page))
+		resp, err := c.doRequest("GET", fmt.Sprintf("/installation/repositories?per_page=100&page=%d", page), nil, token)
 		if err != nil {
 			return nil, fmt.Errorf("cannot get installation repositories: %v", err)
 		}
@@ -292,7 +320,7 @@ func (c *Client) InstallationRepositories() ([]Repository, error) {
 }
 
 func (c *Client) GetRepoVar(owner string, repo string, name string, defaultVal string) (string, error) {
-	resp, err := c.get(fmt.Sprintf("/repos/%s/%s/actions/variables/%s", owner, repo, name))
+	resp, err := c.get(fmt.Sprintf("/repos/%s/%s/actions/variables/%s", owner, repo, name), owner)
 	if err != nil {
 		return "", fmt.Errorf("cannot get repo var: %s", err)
 	}
@@ -325,7 +353,7 @@ func (c *Client) SetRepoVar(owner string, repo string, name string, value string
 	if err != nil {
 		return fmt.Errorf("cannot encode json: %s", err)
 	}
-	resp, err := c.patch(fmt.Sprintf("/repos/%s/%s/actions/variables/%s", owner, repo, name), reader)
+	resp, err := c.patch(fmt.Sprintf("/repos/%s/%s/actions/variables/%s", owner, repo, name), reader, owner)
 	if err != nil {
 		return fmt.Errorf("cannot update variable %q: %w", name, err)
 	}
@@ -348,7 +376,7 @@ func (c *Client) createRepoVar(owner string, repo string, name string, value str
 	if err != nil {
 		return fmt.Errorf("cannot encode json: %s", err)
 	}
-	resp, err := c.post(fmt.Sprintf("/repos/%s/%s/actions/variables", owner, repo), reader)
+	resp, err := c.post(fmt.Sprintf("/repos/%s/%s/actions/variables", owner, repo), reader, owner)
 	if err != nil {
 		return fmt.Errorf("cannot create variable %q: %w", name, err)
 	}

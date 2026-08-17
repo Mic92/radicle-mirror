@@ -9,23 +9,65 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 )
 
-func (c *Client) Token() (string, error) {
+func (c *Client) installationList() ([]appInstallations, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-
-	if c.tokenAge.Add(50 * time.Minute).Before(time.Now()) {
-		slog.Debug("refreshing access token")
-		token, err := c.requestAccessToken()
-		if err != nil {
-			return "", fmt.Errorf("cannot request access token: %v", err)
-		}
-		c.token = token
-		c.tokenAge = time.Now()
+	if c.instAge.Add(10 * time.Minute).After(time.Now()) {
+		return c.installations, nil
 	}
-	return c.token, nil
+	jwt, err := c.generateJwt()
+	if err != nil {
+		return nil, fmt.Errorf("cannot generate JWT: %v", err)
+	}
+	all, err := c.appInstallations(jwt)
+	if err != nil {
+		return nil, err
+	}
+	installations := make([]appInstallations, 0, len(all))
+	for _, item := range all {
+		if item.AppId == c.appId {
+			installations = append(installations, item)
+		}
+	}
+	c.installations = installations
+	c.instAge = time.Now()
+	return installations, nil
+}
+
+func (c *Client) tokenForInstallation(installationId int) (string, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if t, ok := c.tokens[installationId]; ok && t.age.Add(50*time.Minute).After(time.Now()) {
+		return t.token, nil
+	}
+	slog.Debug("refreshing access token", "installation", installationId)
+	jwt, err := c.generateJwt()
+	if err != nil {
+		return "", fmt.Errorf("cannot generate JWT: %v", err)
+	}
+	token, err := c.createInstallationAccessToken(installationId, jwt)
+	if err != nil {
+		return "", fmt.Errorf("cannot create installation access token: %v", err)
+	}
+	c.tokens[installationId] = &cachedToken{token: token, age: time.Now()}
+	return token, nil
+}
+
+func (c *Client) TokenForOwner(owner string) (string, error) {
+	installations, err := c.installationList()
+	if err != nil {
+		return "", err
+	}
+	for _, inst := range installations {
+		if strings.EqualFold(inst.Account.Login, owner) {
+			return c.tokenForInstallation(inst.Id)
+		}
+	}
+	return "", fmt.Errorf("no installation found for owner %q", owner)
 }
 
 func (c *Client) generateJwt() (string, error) {
@@ -59,26 +101,4 @@ func (c *Client) generateJwt() (string, error) {
 	}
 	generatedJwt := encodedJwtParts + "." + base64.RawURLEncoding.EncodeToString(encodedMac)
 	return generatedJwt, nil
-}
-
-func (c *Client) requestAccessToken() (string, error) {
-	generatedJwt, err := c.generateJwt()
-	if err != nil {
-		return "", fmt.Errorf("cannot generate JWT: %v", err)
-	}
-	resp, err := c.appInstallations(generatedJwt)
-	if err != nil {
-		return "", fmt.Errorf("cannot get app installations: %v", err)
-	}
-	for _, item := range resp {
-		if item.AppId != c.appId {
-			continue
-		}
-		token, err := c.createInstallationAccessToken(item.Id, generatedJwt)
-		if err != nil {
-			return "", fmt.Errorf("cannot create installation access token: %v", err)
-		}
-		return token, nil
-	}
-	return "", fmt.Errorf("installation not found for app id %d", c.appId)
 }
