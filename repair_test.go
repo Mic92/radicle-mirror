@@ -34,3 +34,29 @@ func TestIsGitRepo(t *testing.T) {
 		t.Error("missing path recognized as git repo")
 	}
 }
+
+func TestHasBranches(t *testing.T) {
+	empty := t.TempDir()
+	gitInit(t, empty, true)
+	if hasBranches(empty) {
+		t.Error("empty repo reported as having branches")
+	}
+
+	work := t.TempDir()
+	gitInit(t, work, false)
+	if err := os.WriteFile(filepath.Join(work, "f"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{
+		{"add", "f"},
+		{"-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "c"},
+	} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = work
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v: %s", args, err, out)
+		}
+	}
+	if !hasBranches(work) {
+		t.Error("repo with a commit reported as having no branches")
+	}

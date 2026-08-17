@@ -102,6 +102,17 @@ func isGitRepo(path string) bool {
 	return cmd.Run() == nil
 }
 
+// empty GitHub repositories have no branches and cannot be rad-initialized
+func hasBranches(path string) bool {
+	var stdout bytes.Buffer
+	cmd := exec.Command("git", "-C", path, "for-each-ref", "--count=1", "refs/heads")
+	cmd.Stdout = &stdout
+	if err := cmd.Run(); err != nil {
+		return false
+	}
+	return stdout.Len() > 0
+}
+
 func pushRadRepo(ctx context.Context, home string, repoPath string) error {
 	cmd := exec.CommandContext(ctx, "git", "push", "--mirror", "rad")
 	cmd.Dir = repoPath
@@ -171,6 +182,11 @@ func (s *Server) syncRepo(ctx context.Context, repo *github.Repository) error {
 		if err != nil {
 			return fmt.Errorf("cannot pull repository %s: %w", repo.CloneUrl, err)
 		}
+	}
+	if !hasBranches(repoPath) {
+		slog.Info("skipping repo without branches", "repo", repo.FullName)
+		s.syncState.markSynced(repo.Id, repo.PushedAt.Time)
+		return nil
 	}
 	metadata := RadMetadata{
 		Home:        s.radHome,
