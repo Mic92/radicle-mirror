@@ -68,6 +68,13 @@ in
       description = "Forks (owner/repo) to mirror; all other forks are skipped.";
     };
 
+    allowedOwners = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      example = [ "Mic92" ];
+      description = "GitHub users/orgs whose repositories are mirrored. Empty allows all installations.";
+    };
+
     p2pListen = lib.mkOption {
       type = lib.types.listOf lib.types.str;
       default = [ ];
@@ -129,6 +136,8 @@ in
           cfg.ridVarName
           "--mirror-forks"
           (lib.concatStringsSep "," cfg.mirroredForks)
+          "--allowed-owners"
+          (lib.concatStringsSep "," cfg.allowedOwners)
           "--rad-listen"
           (lib.concatStringsSep "," cfg.p2pListen)
           "--rad-external-address"

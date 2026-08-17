@@ -126,15 +126,18 @@ func pushRadRepo(ctx context.Context, home string, repoPath string) error {
 }
 
 // skipRepo reports whether a repository should not be mirrored: forks are
-// skipped unless explicitly allow-listed, to avoid mirroring copies of
-// upstream projects.
+// skipped unless explicitly allow-listed, and owners outside the allow-list
+// (if set) are ignored.
 func (s *Server) skipRepo(repo *github.Repository) bool {
+	if len(s.allowedOwners) > 0 && !s.allowedOwners[repo.Owner.Login] {
+		return true
+	}
 	return repo.Fork && !s.mirroredForks[repo.FullName]
 }
 
 func (s *Server) syncRepo(ctx context.Context, repo *github.Repository) error {
 	if s.skipRepo(repo) {
-		slog.Debug("skipping fork", "repo", repo.FullName)
+		slog.Debug("skipping repo", "repo", repo.FullName)
 		return nil
 	}
 	if s.syncState.upToDate(repo.Id, repo.PushedAt.Time) {

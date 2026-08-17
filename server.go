@@ -29,6 +29,7 @@ type Server struct {
 	githubClient  *github.Client
 	repoVarName   string
 	mirroredForks map[string]bool
+	allowedOwners map[string]bool
 	updatedRepos  chan *syncRequest
 	syncState     *syncState
 	workers       int
@@ -62,6 +63,7 @@ func runServer(args *Args) error {
 		cloneHost:     args.cloneHost,
 		repoVarName:   args.ridVarName,
 		mirroredForks: args.mirroredForks,
+		allowedOwners: args.allowedOwners,
 		updatedRepos:  make(chan *syncRequest, 10000),
 		syncState:     newSyncState(),
 		workers:       args.workers,
