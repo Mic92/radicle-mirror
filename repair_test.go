@@ -73,3 +73,31 @@ func TestRidFromExistsError(t *testing.T) {
 		t.Errorf("expected empty rid, got %q", got)
 	}
 }
+
+func TestRemoveBrokenStorage(t *testing.T) {
+	home := t.TempDir()
+	rid := "rad:zxWijy9GX37j7aKBrxnAMjtwkRZg"
+	dir := filepath.Join(home, "storage", "zxWijy9GX37j7aKBrxnAMjtwkRZg")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if !isMissingIdentityError("✗ Error: missing identity document\n") {
+		t.Error("missing identity error not detected")
+	}
+	if isMissingIdentityError("✗ Error: something else\n") {
+		t.Error("unrelated error detected as missing identity")
+	}
+
+	if err := removeBrokenStorage(home, rid); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Error("broken storage entry not removed")
+	}
+
+	// invalid rid must not delete anything outside the storage dir
+	if err := removeBrokenStorage(home, "rad:../../etc"); err == nil {
+		t.Error("expected error for malformed rid")
+	}
+}

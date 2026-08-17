@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -179,6 +180,20 @@ func ridFromExistsError(output string) string {
 	return "rad:" + m[1]
 }
 
+func isMissingIdentityError(output string) bool {
+	return strings.Contains(output, "missing identity document")
+}
+
+// interrupted rad init leaves storage without a usable identity, blocking
+// re-init since the same inputs derive the same RID
+func removeBrokenStorage(home string, rid string) error {
+	name := strings.TrimPrefix(rid, "rad:")
+	if !regexp.MustCompile(`^z[1-9A-HJ-NP-Za-km-z]+$`).MatchString(name) {
+		return fmt.Errorf("malformed rid: %s", rid)
+	}
+	return os.RemoveAll(filepath.Join(home, "storage", name))
+}
+
 func ensureRad(ctx context.Context, metadata RadMetadata) (string, error) {
 	_ = exec.CommandContext(ctx, "git", "-C", metadata.RepoPath, "remote", "remove", "rad").Run()
 	args := []string{
@@ -204,6 +219,14 @@ func ensureRad(ctx context.Context, metadata RadMetadata) (string, error) {
 	if err := cmd.Run(); err != nil {
 		if rid := ridFromExistsError(stdout.String() + stderr.String()); rid != "" && metadata.ExistingRad == "" {
 			metadata.ExistingRad = rid
+			return ensureRad(ctx, metadata)
+		}
+		if metadata.ExistingRad != "" && isMissingIdentityError(stdout.String()+stderr.String()) {
+			slog.Warn("removing broken storage entry", "rid", metadata.ExistingRad)
+			if err := removeBrokenStorage(metadata.Home, metadata.ExistingRad); err != nil {
+				return "", err
+			}
+			metadata.ExistingRad = ""
 			return ensureRad(ctx, metadata)
 		}
 		return "", fmt.Errorf("rad init command failed: %w, stdout: %s, stderr: %s", err, stdout.String(), stderr.String())
