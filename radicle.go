@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -53,7 +54,33 @@ func installKey(home string, privateKeyPath string) error {
 	return nil
 }
 
-func NewNode(home string, privateKeyPath string) (*RadNode, error) {
+func updateNodeConfig(home string, listen []string, externalAddresses []string) error {
+	path := filepath.Join(home, "config.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("cannot read rad config: %w", err)
+	}
+	var cfg map[string]any
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return fmt.Errorf("cannot parse rad config: %w", err)
+	}
+	node, ok := cfg["node"].(map[string]any)
+	if !ok {
+		return fmt.Errorf("rad config has no node section")
+	}
+	node["listen"] = listen
+	node["externalAddresses"] = externalAddresses
+	out, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return fmt.Errorf("cannot marshal rad config: %w", err)
+	}
+	if err := os.WriteFile(path, append(out, '\n'), 0o644); err != nil {
+		return fmt.Errorf("cannot write rad config: %w", err)
+	}
+	return nil
+}
+
+func NewNode(home string, privateKeyPath string, listen []string, externalAddresses []string) (*RadNode, error) {
 	env := os.Environ()
 	env = append(env, fmt.Sprintf("RAD_HOME=%s", home))
 	if err := installKey(home, privateKeyPath); err != nil {
@@ -70,6 +97,10 @@ func NewNode(home string, privateKeyPath string) (*RadNode, error) {
 		}
 	} else if err != nil {
 		return nil, fmt.Errorf("cannot stat '%s': %w", configPath, err)
+	}
+
+	if err := updateNodeConfig(home, listen, externalAddresses); err != nil {
+		return nil, err
 	}
 
 	cmd := exec.Command("rad", "node", "start", "--foreground")

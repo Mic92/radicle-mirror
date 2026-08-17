@@ -68,6 +68,20 @@ in
       description = "Forks (owner/repo) to mirror; all other forks are skipped.";
     };
 
+    p2pListen = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      example = [ "0.0.0.0:8776" ];
+      description = "Addresses the radicle node listens on for P2P connections. Empty means outbound-only.";
+    };
+
+    p2pExternalAddresses = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      example = [ "seed.example.com:8776" ];
+      description = "External addresses the radicle node announces to peers.";
+    };
+
     workers = lib.mkOption {
       type = lib.types.ints.positive;
       default = 4;
@@ -115,6 +129,10 @@ in
           cfg.ridVarName
           "--mirror-forks"
           (lib.concatStringsSep "," cfg.mirroredForks)
+          "--rad-listen"
+          (lib.concatStringsSep "," cfg.p2pListen)
+          "--rad-external-address"
+          (lib.concatStringsSep "," cfg.p2pExternalAddresses)
           "--workers"
           (toString cfg.workers)
           "--sync-timeout"

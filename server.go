@@ -68,7 +68,7 @@ func runServer(args *Args) error {
 		syncTimeout:   args.syncTimeout,
 	}
 
-	node, err := NewNode(args.radHome, args.radicleKey)
+	node, err := NewNode(args.radHome, args.radicleKey, args.radListen, args.radExternalAddresses)
 	if err != nil {
 		return fmt.Errorf("cannot start rad node: %v", err)
 	}

@@ -12,16 +12,28 @@ type Args struct {
 	rsaKeyPath        string
 	webhookSecretPath string
 
-	radicleKey     string
-	reposPath      string
-	radHome        string
-	githubEndpoint string
-	cloneHost      string
-	addr           string
-	ridVarName     string
-	mirroredForks  map[string]bool
-	workers        int
-	syncTimeout    time.Duration
+	radicleKey           string
+	reposPath            string
+	radHome              string
+	githubEndpoint       string
+	cloneHost            string
+	addr                 string
+	ridVarName           string
+	mirroredForks        map[string]bool
+	radListen            []string
+	radExternalAddresses []string
+	workers              int
+	syncTimeout          time.Duration
+}
+
+func splitList(s string) []string {
+	out := []string{}
+	for _, v := range strings.Split(s, ",") {
+		if v = strings.TrimSpace(v); v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 func parseArgs() (*Args, error) {
@@ -37,6 +49,9 @@ func parseArgs() (*Args, error) {
 
 	var mirroredForks string
 	flag.StringVar(&mirroredForks, "mirror-forks", "", "Comma-separated owner/repo names of forks to mirror; other forks are skipped")
+	var radListen, radExternal string
+	flag.StringVar(&radListen, "rad-listen", "", "Comma-separated addresses the radicle node listens on for P2P connections")
+	flag.StringVar(&radExternal, "rad-external-address", "", "Comma-separated external addresses the radicle node announces")
 	flag.IntVar(&a.workers, "workers", 4, "Number of concurrent repository sync workers")
 	flag.DurationVar(&a.syncTimeout, "sync-timeout", 30*time.Minute, "Timeout for a single repository sync")
 	flag.StringVar(&a.addr, "addr", ":4128", "Port to listen on")
@@ -48,6 +63,8 @@ func parseArgs() (*Args, error) {
 			a.mirroredForks[name] = true
 		}
 	}
+	a.radListen = splitList(radListen)
+	a.radExternalAddresses = splitList(radExternal)
 	if a.radicleKey == "" {
 		return nil, fmt.Errorf("no --radicle-key-path set")
 	}
