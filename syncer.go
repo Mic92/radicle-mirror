@@ -24,6 +24,8 @@ import (
 const (
 	maxSyncRetries = 5
 	syncRetryBase  = 30 * time.Second
+	// tolerated skew between GitHub's pushed_at and our clock
+	clockSkewMargin = time.Minute
 )
 
 // syncState records the last successfully synced pushedAt per repo. Failures
@@ -42,6 +44,15 @@ func (s *syncState) upToDate(id int, pushedAt time.Time) bool {
 	defer s.mu.Unlock()
 	last, ok := s.lastSynced[id]
 	return ok && !pushedAt.After(last)
+}
+
+// syncedAt returns the timestamp covered by a sync: the mirror push includes
+// everything pushed before the fetch started, not just the triggering event
+func syncedAt(pushedAt, fetchStart time.Time) time.Time {
+	if covered := fetchStart.Add(-clockSkewMargin); covered.After(pushedAt) {
+		return covered
+	}
+	return pushedAt
 }
 
 func (s *syncState) markSynced(id int, pushedAt time.Time) {
@@ -154,6 +165,7 @@ func (s *Server) syncRepo(ctx context.Context, repo *github.Repository) error {
 	if radId == "" {
 		radId, _ = s.githubClient.GetRepoVar(repo.Owner.Login, repo.Name, s.repoVarName, "")
 	}
+	fetchStart := time.Now()
 	exists, err := pathExists(repoPath)
 	if err != nil {
 		return fmt.Errorf("cannot check if repo path exists: %w", err)
@@ -188,7 +200,7 @@ func (s *Server) syncRepo(ctx context.Context, repo *github.Repository) error {
 	}
 	if !hasBranches(repoPath) {
 		slog.Info("skipping repo without branches", "repo", repo.FullName)
-		s.syncState.markSynced(repo.Id, repo.PushedAt.Time)
+		s.syncState.markSynced(repo.Id, syncedAt(repo.PushedAt.Time, fetchStart))
 		return nil
 	}
 	metadata := RadMetadata{
@@ -218,7 +230,7 @@ func (s *Server) syncRepo(ctx context.Context, repo *github.Repository) error {
 	if err := pushRadRepo(ctx, s.radHome, repoPath); err != nil {
 		return fmt.Errorf("cannot push radicle repo: %w", err)
 	}
-	s.syncState.markSynced(repo.Id, repo.PushedAt.Time)
+	s.syncState.markSynced(repo.Id, syncedAt(repo.PushedAt.Time, fetchStart))
 	return nil
 }
 
