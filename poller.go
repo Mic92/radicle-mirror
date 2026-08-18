@@ -4,15 +4,37 @@ import (
 	"context"
 	"log/slog"
 	"time"
+
+	"github.com/Mic92/radicle/github"
 )
+
+func (s Server) warnUntracked(repos []github.Repository, reported map[string]bool) {
+	known := make(map[int]bool, len(repos))
+	for _, repo := range repos {
+		known[repo.Id] = true
+	}
+	untracked, err := untrackedRepos(s.reposPath, known)
+	if err != nil {
+		slog.Error("cannot scan for untracked repos", "error", err)
+		return
+	}
+	for _, u := range untracked {
+		if !reported[u.Path] {
+			reported[u.Path] = true
+			slog.Warn("local mirror no longer exists on github", "path", u.Path, "rid", u.Rid)
+		}
+	}
+}
 
 // pollRepos polls github repositories for new commits (in case a webhook was missed).
 func (s Server) pollRepos(ctx context.Context) {
+	reported := make(map[string]bool)
 	for {
 		newRepos, err := s.githubClient.InstallationRepositories()
 		if err != nil {
 			slog.Error("cannot refresh repositories", "error", err)
 		}
+		s.warnUntracked(newRepos, reported)
 		// enqueue repos not yet synced to their latest push, which also retries
 		// previously failed syncs
 		for _, repo := range newRepos {
