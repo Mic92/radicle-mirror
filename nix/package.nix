@@ -17,7 +17,14 @@ in
 buildGoModule {
   pname = "radicle-mirror";
   version = "0.1.0";
-  src = lib.cleanSource ../.;
+  src = lib.fileset.toSource {
+    root = ../.;
+    fileset = lib.fileset.unions [
+      (lib.fileset.fileFilter (file: file.hasExt "go") ../.)
+      ../go.mod
+      ../gh_pr_event.json
+    ];
+  };
   vendorHash = null;
   nativeBuildInputs = [ makeWrapper ];
   nativeCheckInputs = [ git ];
