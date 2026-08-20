@@ -26,6 +26,7 @@ type Args struct {
 	radExternalAddresses []string
 	workers              int
 	syncTimeout          time.Duration
+	explorerURL          string
 }
 
 func splitList(s string) []string {
@@ -58,6 +59,7 @@ func parseArgs() (*Args, error) {
 	var radListen, radExternal string
 	flag.StringVar(&radListen, "rad-listen", "", "Comma-separated addresses the radicle node listens on for P2P connections")
 	flag.StringVar(&radExternal, "rad-external-address", "", "Comma-separated external addresses the radicle node announces")
+	flag.StringVar(&a.explorerURL, "explorer-url", "https://app.radicle.xyz/nodes/seed.radicle.garden/{rid}/commits/{sha}", "URL template for check run details links; {rid} and {sha} are replaced")
 	flag.IntVar(&a.workers, "workers", 4, "Number of concurrent repository sync workers")
 	flag.DurationVar(&a.syncTimeout, "sync-timeout", 30*time.Minute, "Timeout for a single repository sync")
 	flag.StringVar(&a.addr, "addr", ":4128", "Port to listen on")

@@ -148,6 +148,7 @@ type CheckRunOutput struct {
 type CheckRun struct {
 	Name       string         `json:"name"`
 	HeadSha    string         `json:"head_sha"`
+	DetailsUrl string         `json:"details_url,omitempty"`
 	Status     string         `json:"status"`
 	Conclusion string         `json:"conclusion,omitempty"`
 	Output     CheckRunOutput `json:"output"`

@@ -158,7 +158,7 @@ func (s *Server) syncRepo(ctx context.Context, repo *github.Repository) error {
 	if err := s.validateCloneURL(repo.CloneUrl); err != nil {
 		return err
 	}
-	repoPath := filepath.Join(s.reposPath, strconv.Itoa(repo.Owner.Id), strconv.Itoa(repo.Id))
+	repoPath := s.repoPath(repo)
 	// local .rid file is authoritative; GitHub variable is only a recovery fallback
 	ridPath := repoPath + ".rid"
 	radId := readRid(ridPath)
@@ -242,10 +242,27 @@ func readRid(path string) string {
 	return strings.TrimSpace(string(b))
 }
 
+func (s *Server) repoPath(repo *github.Repository) string {
+	return filepath.Join(s.reposPath, strconv.Itoa(repo.Owner.Id), strconv.Itoa(repo.Id))
+}
+
+func (s *Server) explorerLink(repo *github.Repository, headSha string) string {
+	if s.explorerURL == "" {
+		return ""
+	}
+	rid := readRid(s.repoPath(repo) + ".rid")
+	if rid == "" {
+		return ""
+	}
+	url := strings.ReplaceAll(s.explorerURL, "{rid}", rid)
+	return strings.ReplaceAll(url, "{sha}", headSha)
+}
+
 func (s *Server) reportCheckRun(repo *github.Repository, headSha string, syncErr error) error {
 	run := github.CheckRun{
 		Name:       "radicle-mirror",
 		HeadSha:    headSha,
+		DetailsUrl: s.explorerLink(repo, headSha),
 		Status:     "completed",
 		Conclusion: "success",
 		Output: github.CheckRunOutput{
