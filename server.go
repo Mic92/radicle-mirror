@@ -35,6 +35,7 @@ type Server struct {
 	syncState     *syncState
 	workers       int
 	syncTimeout   time.Duration
+	explorerURL   string
 }
 
 func (s Server) healthHandler(w http.ResponseWriter, r *http.Request) {
@@ -71,6 +72,7 @@ func runServer(args *Args) error {
 		syncState:     newSyncState(),
 		workers:       args.workers,
 		syncTimeout:   args.syncTimeout,
+		explorerURL:   args.explorerURL,
 	}
 
 	node, err := NewNode(args.radHome, args.radicleKey, args.radListen, args.radExternalAddresses)
