@@ -258,22 +258,33 @@ func (s *Server) explorerLink(repo *github.Repository, headSha string) string {
 	return strings.ReplaceAll(url, "{sha}", headSha)
 }
 
-func (s *Server) reportCheckRun(repo *github.Repository, headSha string, syncErr error) error {
+const projectURL = "https://github.com/Mic92/radicle-mirror"
+
+// projectLink is appended to every check-run summary so users seeing the
+// status check can discover the project.
+const projectLink = "\n\nMirrored by [radicle-mirror](" + projectURL + ")."
+
+func buildCheckRun(detailsURL string, headSha string, syncErr error) github.CheckRun {
 	run := github.CheckRun{
 		Name:       "radicle-mirror",
 		HeadSha:    headSha,
-		DetailsUrl: s.explorerLink(repo, headSha),
+		DetailsUrl: detailsURL,
 		Status:     "completed",
 		Conclusion: "success",
 		Output: github.CheckRunOutput{
 			Title:   "Radicle mirror",
-			Summary: "Repository mirrored to Radicle.",
+			Summary: "Repository mirrored to Radicle." + projectLink,
 		},
 	}
 	if syncErr != nil {
 		run.Conclusion = "failure"
-		run.Output.Summary = fmt.Sprintf("Mirror to Radicle failed: %s", syncErr)
+		run.Output.Summary = fmt.Sprintf("Mirror to Radicle failed: %s%s", syncErr, projectLink)
 	}
+	return run
+}
+
+func (s *Server) reportCheckRun(repo *github.Repository, headSha string, syncErr error) error {
+	run := buildCheckRun(s.explorerLink(repo, headSha), headSha, syncErr)
 	return s.githubClient.CreateCheckRun(repo.Owner.Login, repo.Name, run)
 }
 
