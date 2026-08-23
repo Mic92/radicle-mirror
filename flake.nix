@@ -35,7 +35,7 @@
         default = pkgs.callPackage ./nix/devshell.nix { };
       });
 
-      formatter = forAllSystems (pkgs: treefmtEval.${pkgs.system}.config.build.wrapper);
+      formatter = forAllSystems (pkgs: treefmtEval.${pkgs.stdenv.hostPlatform.system}.config.build.wrapper);
 
       # export every package and devshell as a check so CI builds them all
       checks = forAllSystems (
@@ -43,10 +43,10 @@
         let
           prefixNames = prefix: nixpkgs.lib.mapAttrs' (n: v: nixpkgs.lib.nameValuePair "${prefix}-${n}" v);
         in
-        (prefixNames "package" self.packages.${pkgs.system})
-        // (prefixNames "devShell" self.devShells.${pkgs.system})
+        (prefixNames "package" self.packages.${pkgs.stdenv.hostPlatform.system})
+        // (prefixNames "devShell" self.devShells.${pkgs.stdenv.hostPlatform.system})
         // {
-          formatting = treefmtEval.${pkgs.system}.config.build.check self;
+          formatting = treefmtEval.${pkgs.stdenv.hostPlatform.system}.config.build.check self;
         }
         // nixpkgs.lib.optionalAttrs (pkgs.stdenv.hostPlatform.isLinux) {
           integration = import ./nix/test.nix { inherit pkgs self; };

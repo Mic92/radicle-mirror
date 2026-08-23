@@ -61,7 +61,7 @@ pkgs.testers.runNixOSTest {
 
       services.radicle-mirror = {
         enable = true;
-        package = self.packages.${pkgs.system}.default;
+        package = self.packages.${pkgs.stdenv.hostPlatform.system}.default;
         ghAppId = appId;
         ghAppKeyPath = "${ghAppKey}";
         webhookSecretPath = "${webhookSecretFile}";
