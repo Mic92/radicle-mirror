@@ -96,6 +96,12 @@ in
       description = "External addresses the radicle node announces to peers.";
     };
 
+    explorerUrl = lib.mkOption {
+      type = lib.types.str;
+      default = "https://app.radicle.xyz/nodes/seed.radicle.garden/{rid}/commits/{sha}";
+      description = "URL template for check run details links; {rid} and {sha} are replaced.";
+    };
+
     p2pConnect = lib.mkOption {
       type = lib.types.listOf lib.types.str;
       default = [ ];
@@ -160,6 +166,8 @@ in
           (lib.concatStringsSep "," cfg.p2pExternalAddresses)
           "--rad-connect"
           (lib.concatStringsSep "," cfg.p2pConnect)
+          "--explorer-url"
+          cfg.explorerUrl
           "--workers"
           (toString cfg.workers)
           "--sync-timeout"
