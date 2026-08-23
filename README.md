@@ -8,8 +8,25 @@ Radicle node. It also polls periodically, so missed webhooks or failed syncs
 are retried. The Radicle RID for each mirrored repository is reported back to
 GitHub as a check run on the pushed commit.
 
-Forks are skipped by default; forks that should still be mirrored can be
+Forks are skipped by default. Forks that should still be mirrored can be
 allow-listed with `-mirror-forks` (see below).
+
+## Check runs
+
+Every sync reports a `radicle-mirror` check run on the pushed commit. Its
+details link points at a Radicle explorer, configured with `-explorer-url`.
+The template replaces `{rid}` with the repository's Radicle ID and `{sha}`
+with the pushed commit:
+
+```
+-explorer-url 'https://app.radicle.xyz/nodes/seed.radicle.garden/{rid}/commits/{sha}'
+```
+
+The linked explorer only shows a commit once its seed node has fetched it.
+Use `-rad-connect` to pin seed nodes (`nid@host:port`) the mirror connects to
+and prefers for syncing, so the linked instance picks up new commits
+immediately. If you run your own explorer against the mirror's storage, links
+are live right after a sync without any pinning.
 
 ## Setup
 
@@ -61,6 +78,10 @@ nix run github:Mic92/radicle-mirror -- -help
     radicleKeyPath = "/run/secrets/radicle-key";
     # forks are skipped unless listed here
     mirroredForks = [ "myorg/some-fork" ];
+    # explorer used for check run details links
+    explorerUrl = "https://app.radicle.xyz/nodes/seed.radicle.garden/{rid}/commits/{sha}";
+    # seed nodes to connect to and prefer for syncing
+    p2pConnect = [ "z6MkrLMMsiPWUcNPHcRajuMi9mDfYckSoJyPwwnknocNYPm7@seed.radicle.garden:8776" ];
   };
 }
 ```

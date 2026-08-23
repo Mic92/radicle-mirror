@@ -52,16 +52,16 @@ func parseArgs() (*Args, error) {
 	flag.StringVar(&a.ridVarName, "gh-rid-var-name", "RADICLE_RID", "Name of the environment variable to set with the repository name")
 
 	var mirroredForks string
-	flag.StringVar(&mirroredForks, "mirror-forks", "", "Comma-separated owner/repo names of forks to mirror; other forks are skipped")
+	flag.StringVar(&mirroredForks, "mirror-forks", "", "Comma-separated owner/repo names of forks to mirror. Other forks are skipped")
 	var delegates string
 	flag.StringVar(&delegates, "delegate", "", "Comma-separated DIDs to add as delegates on mirrored repos")
 	var allowedOwners string
-	flag.StringVar(&allowedOwners, "allowed-owners", "", "Comma-separated GitHub users/orgs to mirror; empty allows all")
+	flag.StringVar(&allowedOwners, "allowed-owners", "", "Comma-separated GitHub users/orgs to mirror. Empty allows all")
 	var radListen, radExternal, radConnect string
 	flag.StringVar(&radListen, "rad-listen", "", "Comma-separated addresses the radicle node listens on for P2P connections")
 	flag.StringVar(&radExternal, "rad-external-address", "", "Comma-separated external addresses the radicle node announces")
 	flag.StringVar(&radConnect, "rad-connect", "", "Comma-separated seed nodes (nid@host:port) the radicle node connects to and prefers for syncing")
-	flag.StringVar(&a.explorerURL, "explorer-url", "https://app.radicle.xyz/nodes/seed.radicle.garden/{rid}/commits/{sha}", "URL template for check run details links; {rid} and {sha} are replaced")
+	flag.StringVar(&a.explorerURL, "explorer-url", "https://app.radicle.xyz/nodes/seed.radicle.garden/{rid}/commits/{sha}", "URL template for check run details links. {rid} and {sha} are replaced")
 	flag.IntVar(&a.workers, "workers", 4, "Number of concurrent repository sync workers")
 	flag.DurationVar(&a.syncTimeout, "sync-timeout", 30*time.Minute, "Timeout for a single repository sync")
 	flag.StringVar(&a.addr, "addr", ":4128", "Port to listen on")

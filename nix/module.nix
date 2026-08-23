@@ -65,7 +65,7 @@ in
       type = lib.types.listOf lib.types.str;
       default = [ ];
       example = [ "Mic92/nixpkgs" ];
-      description = "Forks (owner/repo) to mirror; all other forks are skipped.";
+      description = "Forks (owner/repo) to mirror. All other forks are skipped.";
     };
 
     delegates = lib.mkOption {
@@ -99,7 +99,7 @@ in
     explorerUrl = lib.mkOption {
       type = lib.types.str;
       default = "https://app.radicle.xyz/nodes/seed.radicle.garden/{rid}/commits/{sha}";
-      description = "URL template for check run details links; {rid} and {sha} are replaced.";
+      description = "URL template for check run details links. {rid} and {sha} are replaced.";
     };
 
     p2pConnect = lib.mkOption {
