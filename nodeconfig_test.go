@@ -11,10 +11,12 @@ func TestUpdateNodeConfig(t *testing.T) {
 	home := t.TempDir()
 	cfg := map[string]any{
 		"publicExplorer": "https://app.radicle.xyz",
+		"preferredSeeds": []any{},
 		"node": map[string]any{
 			"alias":             "radicle-mirror",
 			"listen":            []any{},
 			"externalAddresses": []any{},
+			"connect":           []any{},
 		},
 	}
 	b, _ := json.Marshal(cfg)
@@ -25,7 +27,8 @@ func TestUpdateNodeConfig(t *testing.T) {
 
 	listen := []string{"0.0.0.0:8776"}
 	external := []string{"radicle.example.com:8776"}
-	if err := updateNodeConfig(home, listen, external); err != nil {
+	connect := []string{"z6Mkabc@iris.radicle.network:8776"}
+	if err := updateNodeConfig(home, listen, external, connect); err != nil {
 		t.Fatal(err)
 	}
 
@@ -43,6 +46,12 @@ func TestUpdateNodeConfig(t *testing.T) {
 	}
 	if node["externalAddresses"].([]any)[0] != "radicle.example.com:8776" {
 		t.Errorf("externalAddresses not updated: %v", node["externalAddresses"])
+	}
+	if node["connect"].([]any)[0] != "z6Mkabc@iris.radicle.network:8776" {
+		t.Errorf("connect not updated: %v", node["connect"])
+	}
+	if got["preferredSeeds"].([]any)[0] != "z6Mkabc@iris.radicle.network:8776" {
+		t.Errorf("preferredSeeds not updated: %v", got["preferredSeeds"])
 	}
 	if node["alias"] != "radicle-mirror" {
 		t.Errorf("unrelated key clobbered: %v", node["alias"])

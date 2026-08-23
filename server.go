@@ -75,7 +75,7 @@ func runServer(args *Args) error {
 		explorerURL:   args.explorerURL,
 	}
 
-	node, err := NewNode(args.radHome, args.radicleKey, args.radListen, args.radExternalAddresses)
+	node, err := NewNode(args.radHome, args.radicleKey, args.radListen, args.radExternalAddresses, args.radConnect)
 	if err != nil {
 		return fmt.Errorf("cannot start rad node: %v", err)
 	}

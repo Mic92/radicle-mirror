@@ -96,6 +96,13 @@ in
       description = "External addresses the radicle node announces to peers.";
     };
 
+    p2pConnect = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      example = [ "z6MkrLMMsiPWUcNPHcRajuMi9mDfYckSoJyPwwnknocNYPm7@seed.radicle.garden:8776" ];
+      description = "Seed nodes (nid@host:port) the radicle node connects to and prefers for syncing.";
+    };
+
     workers = lib.mkOption {
       type = lib.types.ints.positive;
       default = 4;
@@ -151,6 +158,8 @@ in
           (lib.concatStringsSep "," cfg.p2pListen)
           "--rad-external-address"
           (lib.concatStringsSep "," cfg.p2pExternalAddresses)
+          "--rad-connect"
+          (lib.concatStringsSep "," cfg.p2pConnect)
           "--workers"
           (toString cfg.workers)
           "--sync-timeout"

@@ -55,7 +55,11 @@ func installKey(home string, privateKeyPath string) error {
 	return nil
 }
 
-func updateNodeConfig(home string, listen []string, externalAddresses []string) error {
+// connect entries (nid@host:port) are set both as node.connect, so the node
+// keeps persistent connections to them, and as preferredSeeds, so rad sync
+// targets them; together this makes content propagate to those instances
+// immediately after a push.
+func updateNodeConfig(home string, listen []string, externalAddresses []string, connect []string) error {
 	path := filepath.Join(home, "config.json")
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -71,6 +75,8 @@ func updateNodeConfig(home string, listen []string, externalAddresses []string) 
 	}
 	node["listen"] = listen
 	node["externalAddresses"] = externalAddresses
+	node["connect"] = connect
+	cfg["preferredSeeds"] = connect
 	out, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		return fmt.Errorf("cannot marshal rad config: %w", err)
@@ -81,7 +87,7 @@ func updateNodeConfig(home string, listen []string, externalAddresses []string) 
 	return nil
 }
 
-func NewNode(home string, privateKeyPath string, listen []string, externalAddresses []string) (*RadNode, error) {
+func NewNode(home string, privateKeyPath string, listen []string, externalAddresses []string, connect []string) (*RadNode, error) {
 	env := os.Environ()
 	env = append(env, fmt.Sprintf("RAD_HOME=%s", home))
 	if err := installKey(home, privateKeyPath); err != nil {
@@ -100,7 +106,7 @@ func NewNode(home string, privateKeyPath string, listen []string, externalAddres
 		return nil, fmt.Errorf("cannot stat '%s': %w", configPath, err)
 	}
 
-	if err := updateNodeConfig(home, listen, externalAddresses); err != nil {
+	if err := updateNodeConfig(home, listen, externalAddresses, connect); err != nil {
 		return nil, err
 	}
 

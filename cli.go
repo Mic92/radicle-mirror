@@ -24,6 +24,7 @@ type Args struct {
 	delegates            []string
 	radListen            []string
 	radExternalAddresses []string
+	radConnect           []string
 	workers              int
 	syncTimeout          time.Duration
 	explorerURL          string
@@ -56,9 +57,10 @@ func parseArgs() (*Args, error) {
 	flag.StringVar(&delegates, "delegate", "", "Comma-separated DIDs to add as delegates on mirrored repos")
 	var allowedOwners string
 	flag.StringVar(&allowedOwners, "allowed-owners", "", "Comma-separated GitHub users/orgs to mirror; empty allows all")
-	var radListen, radExternal string
+	var radListen, radExternal, radConnect string
 	flag.StringVar(&radListen, "rad-listen", "", "Comma-separated addresses the radicle node listens on for P2P connections")
 	flag.StringVar(&radExternal, "rad-external-address", "", "Comma-separated external addresses the radicle node announces")
+	flag.StringVar(&radConnect, "rad-connect", "", "Comma-separated seed nodes (nid@host:port) the radicle node connects to and prefers for syncing")
 	flag.StringVar(&a.explorerURL, "explorer-url", "https://app.radicle.xyz/nodes/seed.radicle.garden/{rid}/commits/{sha}", "URL template for check run details links; {rid} and {sha} are replaced")
 	flag.IntVar(&a.workers, "workers", 4, "Number of concurrent repository sync workers")
 	flag.DurationVar(&a.syncTimeout, "sync-timeout", 30*time.Minute, "Timeout for a single repository sync")
@@ -78,6 +80,7 @@ func parseArgs() (*Args, error) {
 	}
 	a.radListen = splitList(radListen)
 	a.radExternalAddresses = splitList(radExternal)
+	a.radConnect = splitList(radConnect)
 	if a.radicleKey == "" {
 		return nil, fmt.Errorf("no --radicle-key-path set")
 	}
