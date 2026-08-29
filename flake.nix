@@ -35,7 +35,9 @@
         default = pkgs.callPackage ./nix/devshell.nix { };
       });
 
-      formatter = forAllSystems (pkgs: treefmtEval.${pkgs.stdenv.hostPlatform.system}.config.build.wrapper);
+      formatter = forAllSystems (
+        pkgs: treefmtEval.${pkgs.stdenv.hostPlatform.system}.config.build.wrapper
+      );
 
       # export every package and devshell as a check so CI builds them all
       checks = forAllSystems (
