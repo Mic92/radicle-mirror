@@ -91,6 +91,10 @@ func runServer(args *Args) error {
 	}
 	s.githubClient = githubClient
 
+	if err := s.reconcileSeedScopes(ctx); err != nil {
+		slog.Warn("cannot reconcile seed scopes", "error", err)
+	}
+
 	go s.pollRepos(ctx)
 	go s.syncer(ctx)
 

@@ -239,6 +239,24 @@ func ensureSeedScope(ctx context.Context, home string, rid string) error {
 	return nil
 }
 
+// Up-to-date mirrors never reach syncRepo, so fix their scope on startup.
+func (s *Server) reconcileSeedScopes(ctx context.Context) error {
+	ridFiles, err := filepath.Glob(filepath.Join(s.reposPath, "*", "*.rid"))
+	if err != nil {
+		return err
+	}
+	for _, f := range ridFiles {
+		rid := readRid(f)
+		if rid == "" {
+			continue
+		}
+		if err := ensureSeedScope(ctx, s.radHome, rid); err != nil {
+			slog.Warn("cannot set seed scope", "rid", rid, "error", err)
+		}
+	}
+	return nil
+}
+
 func isMissingIdentityError(output string) bool {
 	return strings.Contains(output, "missing identity document")
 }
