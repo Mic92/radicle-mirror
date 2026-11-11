@@ -27,7 +27,10 @@ buildGoModule {
   };
   vendorHash = null;
   nativeBuildInputs = [ makeWrapper ];
-  nativeCheckInputs = [ git ];
+  nativeCheckInputs = [
+    git
+    radicle-node
+  ];
   postInstall = ''
     wrapProgram $out/bin/radicle \
       --prefix PATH : ${lib.makeBinPath runtimeDeps}

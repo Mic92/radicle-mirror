@@ -228,6 +228,17 @@ func ensureDelegates(ctx context.Context, home string, repoPath string, delegate
 	return nil
 }
 
+// Repos adopted via `rad init --existing` can keep a 'followed' scope, which
+// drops patches and branches from non-delegates, so enforce 'all'.
+func ensureSeedScope(ctx context.Context, home string, rid string) error {
+	cmd := exec.CommandContext(ctx, "rad", "seed", rid, "--scope", "all", "--no-fetch")
+	cmd.Env = radEnv(home)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("rad seed failed: %w, output: %s", err, out)
+	}
+	return nil
+}
+
 func isMissingIdentityError(output string) bool {
 	return strings.Contains(output, "missing identity document")
 }
